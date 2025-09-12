@@ -1,0 +1,79 @@
+# Mock 환경 설정
+mock_environment:
+  # Mock 사용 여부
+  enabled: ${USE_MOCK_DATA:true}
+  
+  # 환경 타입 (development, testing, demo, production)
+  environment_type: ${MOCK_ENVIRONMENT:development}
+  
+  # Mock 데이터 설정
+  data:
+    initial_count: ${MOCK_DATA_COUNT:50}
+    auto_regenerate: ${MOCK_AUTO_REGENERATE:false}
+    regenerate_interval_days: 7
+    sample_data_path: "sample_data"
+  
+  # Mock API 설정
+  api:
+    enabled: ${USE_MOCK_API:true}
+    enable_delay: ${MOCK_API_DELAY:true}
+    error_rate: ${MOCK_API_ERROR_RATE:0.02}
+    min_delay_ms: 100
+    max_delay_ms: 2000
+    
+    # API 응답 시뮬레이션
+    simulate_rate_limits: ${MOCK_API_RATE_LIMITS:true}
+    requests_per_minute: 60
+    
+  # Mock 데이터베이스 설정  
+  database:
+    enabled: ${USE_MOCK_DB:true}
+    type: "sqlite"  # sqlite, memory
+    path: "${MOCK_DB_PATH:sample_data/mock_legal.db}"
+    auto_populate: true
+    
+    # 성능 설정
+    connection_pool_size: 5
+    query_timeout: 30
+    
+  # 로깅 설정
+  logging:
+    enabled: ${MOCK_LOGGING:true}
+    level: ${MOCK_LOG_LEVEL:INFO}
+    log_api_calls: true
+    log_db_operations: false
+    log_file: "logs/mock_environment.log"
+
+# 환경별 프리셋
+presets:
+  development:
+    api:
+      enable_delay: false
+      error_rate: 0.01
+    database:
+      type: "memory"
+    logging:
+      level: "DEBUG"
+      
+  testing:
+    api:
+      enable_delay: false
+      error_rate: 0.05
+    database:
+      type: "memory"
+    logging:
+      level: "WARNING"
+      
+  demo:
+    api:
+      enable_delay: true
+      error_rate: 0.02
+    database:
+      type: "sqlite"
+    logging:
+      level: "INFO"
+      
+  production:
+    # Production 환경에서는 Mock 비활성화
+    mock_environment:
+      enabled: false
