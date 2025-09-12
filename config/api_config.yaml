@@ -15,7 +15,7 @@ legal_api:
   batch_size: 100
   
   # Mock 데이터 설정 (개발/테스트용)
-  use_mock_data: ${USE_MOCK_DATA:false}
+  use_mock_data: ${USE_MOCK_DATA:true}
   mock_data_path: "tests/fixtures/mock_api_responses"
 
 # 증분 업데이트 설정

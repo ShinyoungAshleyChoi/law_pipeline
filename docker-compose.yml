@@ -326,6 +326,168 @@ services:
     networks:
       - legal-network
 
+  # ==================== Apache Airflow ====================
+  postgres:
+    image: postgres:13
+    container_name: legal-postgres
+    hostname: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow_pass_2024!
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  airflow-webserver:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: legal-airflow-webserver
+    hostname: airflow-webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass_2024!@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: redis://:legal_redis_2024!@redis:6379/1
+      AIRFLOW__CELERY__BROKER_URL: redis://:legal_redis_2024!@redis:6379/2
+      AIRFLOW__CORE__FERNET_KEY: 'Zv8eB7X0eH1K5k8F7yP9mN3wQ6tR2sA1dG4hJ8kL0oM='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      AIRFLOW_CONN_MYSQL_BLUE: 'mysql://legal_user:legal_pass_2024!@mysql-blue:3306/legal_db'
+      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3306/legal_db'
+      AIRFLOW_CONN_KAFKA: 'kafka://kafka1:29092,kafka2:29093,kafka3:29094'
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow_admin_2024!
+    volumes:
+      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src/airflow/logs:/opt/airflow/logs
+      - ./src/airflow/plugins:/opt/airflow/plugins
+      - ./src/airflow/config:/opt/airflow/config
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8090:8080"  # Changed from 8080 to avoid conflict with Kafka UI
+    command: webserver
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: legal-airflow-scheduler
+    hostname: airflow-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass_2024!@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: redis://:legal_redis_2024!@redis:6379/1
+      AIRFLOW__CELERY__BROKER_URL: redis://:legal_redis_2024!@redis:6379/2
+      AIRFLOW__CORE__FERNET_KEY: 'Zv8eB7X0eH1K5k8F7yP9mN3wQ6tR2sA1dG4hJ8kL0oM='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW_CONN_MYSQL_BLUE: 'mysql://legal_user:legal_pass_2024!@mysql-blue:3306/legal_db'
+      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3306/legal_db'
+      AIRFLOW_CONN_KAFKA: 'kafka://kafka1:29092,kafka2:29093,kafka3:29094'
+    volumes:
+      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src/airflow/logs:/opt/airflow/logs
+      - ./src/airflow/plugins:/opt/airflow/plugins
+      - ./src/airflow/config:/opt/airflow/config
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  airflow-worker:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: legal-airflow-worker
+    hostname: airflow-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass_2024!@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: redis://:legal_redis_2024!@redis:6379/1
+      AIRFLOW__CELERY__BROKER_URL: redis://:legal_redis_2024!@redis:6379/2
+      AIRFLOW__CORE__FERNET_KEY: 'Zv8eB7X0eH1K5k8F7yP9mN3wQ6tR2sA1dG4hJ8kL0oM='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW_CONN_MYSQL_BLUE: 'mysql://legal_user:legal_pass_2024!@mysql-blue:3306/legal_db'
+      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3306/legal_db'
+      AIRFLOW_CONN_KAFKA: 'kafka://kafka1:29092,kafka2:29093,kafka3:29094'
+    volumes:
+      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src/airflow/logs:/opt/airflow/logs
+      - ./src/airflow/plugins:/opt/airflow/plugins
+      - ./src/airflow/config:/opt/airflow/config
+      - airflow_logs:/opt/airflow/logs
+    command: celery worker
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  airflow-flower:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: legal-airflow-flower
+    hostname: airflow-flower
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass_2024!@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: redis://:legal_redis_2024!@redis:6379/1
+      AIRFLOW__CELERY__BROKER_URL: redis://:legal_redis_2024!@redis:6379/2
+      AIRFLOW__CORE__FERNET_KEY: 'Zv8eB7X0eH1K5k8F7yP9mN3wQ6tR2sA1dG4hJ8kL0oM='
+    volumes:
+      - ./src/airflow/logs:/opt/airflow/logs
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "5555:5555"
+    command: celery flower
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
   # ==================== Monitoring ====================
   prometheus:
     image: prom/prometheus:latest
@@ -397,6 +559,12 @@ volumes:
   # Redis
   redis_data:
     name: legal_redis_data
+  
+  # Airflow
+  postgres_data:
+    name: legal_postgres_data
+  airflow_logs:
+    name: legal_airflow_logs
   
   # Monitoring
   prometheus_data:
