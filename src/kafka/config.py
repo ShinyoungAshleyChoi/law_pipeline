@@ -49,42 +49,73 @@ class KafkaConfig:
             }
         
         if self.topic_config is None:
+            # 데이터 기반 최적화된 파티션 설정
             self.topic_config = {
                 'legal-law-events': {
-                    'partitions': 6,
+                    'partitions': 3,  # 법령 수 적음 (월 100-200건), 순서 중요
                     'replication_factor': 3,
                     'key_serializer': 'str',
-                    'value_serializer': 'json'
+                    'value_serializer': 'json',
+                    'config': {
+                        'retention.ms': 7*24*60*60*1000,  # 7일 보존
+                        'compression.type': 'lz4',
+                        'min.insync.replicas': 2
+                    }
                 },
                 'legal-content-events': {
-                    'partitions': 4, 
+                    'partitions': 6,  # 법령 본문 처리, CPU 집약적
                     'replication_factor': 3,
                     'key_serializer': 'str',
-                    'value_serializer': 'json'
+                    'value_serializer': 'json',
+                    'config': {
+                        'retention.ms': 3*24*60*60*1000,  # 3일 보존 (크기 큼)
+                        'compression.type': 'gzip',  # 텍스트 압축률 높음
+                        'min.insync.replicas': 2
+                    }
                 },
                 'legal-article-events': {
-                    'partitions': 8,
+                    'partitions': 12,  # 높은 볼륨 (~100만 조항), 병렬 처리
                     'replication_factor': 3,
                     'key_serializer': 'str', 
-                    'value_serializer': 'json'
+                    'value_serializer': 'json',
+                    'config': {
+                        'retention.ms': 24*60*60*1000,  # 1일 보존
+                        'compression.type': 'lz4',
+                        'min.insync.replicas': 2
+                    }
                 },
                 'legal-batch-status': {
-                    'partitions': 1,
+                    'partitions': 1,  # 글로벌 순서 보장 필수
                     'replication_factor': 3,
                     'key_serializer': 'str',
-                    'value_serializer': 'json'
+                    'value_serializer': 'json',
+                    'config': {
+                        'retention.ms': 30*24*60*60*1000,  # 30일 보존
+                        'compression.type': 'lz4',
+                        'min.insync.replicas': 2
+                    }
                 },
                 'legal-notifications': {
-                    'partitions': 2,
+                    'partitions': 2,  # 적은 볼륨, 가용성 중심
                     'replication_factor': 3,
                     'key_serializer': 'str',
-                    'value_serializer': 'json'
+                    'value_serializer': 'json',
+                    'config': {
+                        'retention.ms': 7*24*60*60*1000,  # 7일 보존
+                        'compression.type': 'lz4',
+                        'min.insync.replicas': 2
+                    }
                 },
                 'legal-dlq': {
-                    'partitions': 3,
+                    'partitions': 3,  # 오류 분산 처리
                     'replication_factor': 3, 
                     'key_serializer': 'str',
-                    'value_serializer': 'json'
+                    'value_serializer': 'json',
+                    'config': {
+                        'retention.ms': 14*24*60*60*1000,  # 14일 보존
+                        'compression.type': 'lz4',
+                        'min.insync.replicas': 2
+                    }
                 }
             }
 

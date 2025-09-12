@@ -5,6 +5,8 @@ from typing import Optional, Dict, Any, Union
 from enum import Enum
 import uuid
 import json
+import time
+import hashlib
 
 class EventType(Enum):
     """이벤트 타입"""
@@ -116,6 +118,7 @@ class LawEvent(KafkaMessage):
     law_master_no: Optional[str] = None
     law_name: Optional[str] = None
     enforcement_date: Optional[date] = None
+    ministry_code: Optional[int] = None
     
     def __post_init__(self):
         """초기화 후 처리"""
@@ -131,22 +134,39 @@ class LawEvent(KafkaMessage):
             self.data['law_name'] = self.law_name
         if self.enforcement_date:
             self.data['enforcement_date'] = self.enforcement_date.isoformat()
+        if self.ministry_code:
+            self.data['ministry_code'] = self.ministry_code
     
     def get_partition_key(self) -> str:
-        """법령ID를 파티션 키로 사용"""
-        return self.law_id or self.event_id
+        """개선된 파티션 키 전략 - Hot Partition 방지"""
+        if self.law_id:
+            # 1. 소관부처 기반 분산 (Hot Partition 방지)
+            if self.ministry_code:
+                # 소관부처 코드로 기본 분산
+                return f"ministry_{self.ministry_code % 3}"
+            
+            # 2. 시간 기반 분산 (동시 업데이트 분산)
+            time_bucket = int(time.time() / 3600)  # 1시간 단위 버킷
+            combined_key = f"{self.law_id}_{time_bucket}"
+            hash_value = int(hashlib.md5(combined_key.encode()).hexdigest(), 16)
+            return str(hash_value % 1000000)
+        
+        return self.event_id
     
     @classmethod
     def create_updated_event(cls, law_id: str, law_master_no: str, law_name: str, 
                            enforcement_date: date, law_data: Dict[str, Any],
                            correlation_id: Optional[str] = None) -> 'LawEvent':
         """법령 업데이트 이벤트 생성"""
+        ministry_code = law_data.get('ministry_code')
+        
         return cls(
             event_type=EventType.LAW_UPDATED,
             law_id=law_id,
             law_master_no=law_master_no, 
             law_name=law_name,
             enforcement_date=enforcement_date,
+            ministry_code=ministry_code,
             correlation_id=correlation_id,
             data=law_data
         )
@@ -156,6 +176,7 @@ class ContentEvent(KafkaMessage):
     """법령 본문 이벤트 메시지"""
     law_id: Optional[str] = None
     content_size: Optional[int] = None
+    article_count: Optional[int] = None
     
     def __post_init__(self):
         """초기화 후 처리"""
@@ -166,21 +187,34 @@ class ContentEvent(KafkaMessage):
             self.data['law_id'] = self.law_id
         if self.content_size:
             self.data['content_size'] = self.content_size
+        if self.article_count:
+            self.data['article_count'] = self.article_count
     
     def get_partition_key(self) -> str:
-        """법령ID를 파티션 키로 사용"""
-        return self.law_id or self.event_id
+        """본문 크기 기반 분산 파티션 키"""
+        if self.law_id and self.content_size:
+            # 본문 크기에 따른 분산 (큰 법령 분산 처리)
+            size_bucket = "large" if self.content_size > 50000 else "medium" if self.content_size > 10000 else "small"
+            combined_key = f"{self.law_id}_{size_bucket}"
+            hash_value = int(hashlib.md5(combined_key.encode()).hexdigest(), 16)
+            return str(hash_value % 1000000)
+        elif self.law_id:
+            return str(self.law_id)
+        
+        return self.event_id
     
     @classmethod
     def create_updated_event(cls, law_id: str, content_data: Dict[str, Any],
                            correlation_id: Optional[str] = None) -> 'ContentEvent':
         """법령 본문 업데이트 이벤트 생성"""
         content_size = len(str(content_data.get('content', '')))
+        article_count = content_data.get('article_count', 0)
         
         return cls(
             event_type=EventType.CONTENT_UPDATED,
             law_id=law_id,
             content_size=content_size,
+            article_count=article_count,
             correlation_id=correlation_id,
             data=content_data
         )
@@ -192,6 +226,7 @@ class ArticleEvent(KafkaMessage):
     law_master_no: Optional[str] = None
     article_no: Optional[int] = None
     article_count: Optional[int] = None
+    ministry_code: Optional[int] = None
     
     def __post_init__(self):
         """초기화 후 처리"""
@@ -206,20 +241,50 @@ class ArticleEvent(KafkaMessage):
             self.data['article_no'] = self.article_no
         if self.article_count:
             self.data['article_count'] = self.article_count
+        if self.ministry_code:
+            self.data['ministry_code'] = self.ministry_code
     
     def get_partition_key(self) -> str:
-        """법령마스터번호를 파티션 키로 사용"""
-        return self.law_master_no or self.law_id or self.event_id
+        """조항 그룹핑 최적화된 파티션 키"""
+        if self.law_master_no and self.article_no:
+            # 관련 조항들을 동일 파티션에 그룹핑 (조문 10개 단위)
+            article_group = self.article_no // 10
+            
+            # 소관부처별 분산으로 Hot Partition 방지
+            if self.ministry_code:
+                combined_key = f"ministry_{self.ministry_code}_group_{article_group}"
+            else:
+                combined_key = f"{self.law_master_no}_group_{article_group}"
+                
+            hash_value = int(hashlib.md5(combined_key.encode()).hexdigest(), 16)
+            return str(hash_value % 1000000)
+        
+        elif self.law_master_no:
+            # 법령마스터번호 기준 기본 분산
+            if self.ministry_code:
+                combined_key = f"ministry_{self.ministry_code}_{self.law_master_no}"
+                hash_value = int(hashlib.md5(combined_key.encode()).hexdigest(), 16)
+                return str(hash_value % 1000000)
+            return str(self.law_master_no)
+        
+        return self.event_id
     
     @classmethod
     def create_updated_event(cls, law_id: str, law_master_no: str, 
-                           articles_data: list, correlation_id: Optional[str] = None) -> 'ArticleEvent':
+                           articles_data: list, ministry_code: Optional[int] = None,
+                           correlation_id: Optional[str] = None) -> 'ArticleEvent':
         """조항 업데이트 이벤트 생성"""
+        # 대표 조항 번호 (첫 번째 조항)
+        first_article = articles_data[0] if articles_data else {}
+        article_no = first_article.get('article_no', 0)
+        
         return cls(
             event_type=EventType.ARTICLE_UPDATED,
             law_id=law_id,
             law_master_no=law_master_no,
+            article_no=article_no,
             article_count=len(articles_data),
+            ministry_code=ministry_code,
             correlation_id=correlation_id,
             data={'articles': articles_data}
         )
@@ -247,7 +312,7 @@ class BatchStatusEvent(KafkaMessage):
             self.data['error_count'] = self.error_count
     
     def get_partition_key(self) -> str:
-        """작업ID를 파티션 키로 사용"""
+        """작업ID를 파티션 키로 사용 (단일 파티션이므로 키 무관)"""
         return self.job_id or self.event_id
     
     @classmethod
@@ -292,6 +357,11 @@ class NotificationEvent(KafkaMessage):
             'severity': self.severity,
             'channels': self.channels
         })
+    
+    def get_partition_key(self) -> str:
+        """심각도 기반 파티션 분산"""
+        # error/critical은 파티션 0, 나머지는 파티션 1
+        return "0" if self.severity in ["error", "critical"] else "1"
     
     @classmethod
     def create_error_alert(cls, title: str, message: str, 

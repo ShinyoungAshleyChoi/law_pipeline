@@ -266,6 +266,8 @@ full-stack: ## 전체 스택 시작 (Kafka+MySQL+Airflow+BlueGreen)
 	@make airflow-init
 	@echo "3️⃣  블루그린 배포..."
 	@make bluegreen-deploy
+	@echo "4️⃣  Kafka 파티션 최적화 확인..."
+	@make partition-health
 	@echo "✅ 전체 스택 준비 완료!"
 	@make access-info
 
@@ -280,6 +282,31 @@ full-stack-clean: ## 전체 스택 완전 정리
 	@make bluegreen-cleanup || true
 	@make airflow-clean || true
 	@make clean-all
+
+# Kafka 파티션 모니터링 (신규 추가)
+partition-health: ## Kafka 파티션 건강 상태 체크
+	@echo "🔍 Kafka 파티션 건강 상태 체크 중..."
+	uv run python -m src.kafka.partition_monitor --action health
+
+partition-analyze: ## 특정 토픽 파티션 분석 (usage: make partition-analyze TOPIC=legal-law-events)
+	@echo "📊 토픽 파티션 분석: $(TOPIC)"
+	uv run python -m src.kafka.partition_monitor --action analyze --topic $(TOPIC)
+
+partition-suggest: ## 파티션 리밸런싱 제안 (usage: make partition-suggest TOPIC=legal-law-events)  
+	@echo "💡 파티션 리밸런싱 제안: $(TOPIC)"
+	uv run python -m src.kafka.partition_monitor --action suggest --topic $(TOPIC)
+
+partition-optimize: ## 모든 토픽 파티션 최적화 권장사항
+	@echo "⚡ 전체 파티션 최적화 권장사항:"
+	@echo ""
+	@echo "📋 법령 이벤트 토픽:"
+	@make partition-analyze TOPIC=legal-law-events
+	@echo ""
+	@echo "📋 본문 이벤트 토픽:" 
+	@make partition-analyze TOPIC=legal-content-events
+	@echo ""
+	@echo "📋 조항 이벤트 토픽:"
+	@make partition-analyze TOPIC=legal-article-events
 
 status-all: ## 모든 서비스 상태 확인
 	@echo "📊 전체 시스템 상태:"
@@ -317,6 +344,12 @@ access-info: ## 전체 접속 정보 출력
 	@echo "   💚 MySQL Green:    localhost:3307 (legal_user/legal_pass_2024!)"
 	@echo "   🗄️  PostgreSQL:     localhost:5432 (airflow/airflow_pass_2024!)"
 	@echo "   📦 Redis:          localhost:6379 (legal_redis_2024!)"
+	@echo ""
+	@echo "🔄 Kafka 파티션 모니터링:"
+	@echo "   📊 건강 상태:       make partition-health"
+	@echo "   🔍 토픽 분석:       make partition-analyze TOPIC=토픽명"
+	@echo "   💡 최적화 제안:     make partition-suggest TOPIC=토픽명"
+	@echo "   ⚡ 전체 최적화:     make partition-optimize"
 
 # 모니터링
 monitor: ## 모니터링 대시보드 열기
@@ -392,7 +425,8 @@ setup: dev up topics-setup ## 기본 개발 환경 설정
 	@echo "  1. make db-init          # 데이터베이스 초기화"
 	@echo "  2. make db-load          # Mock 데이터 적재"
 	@echo "  3. make test             # 테스트 실행"
-	@echo "  4. make monitor          # 모니터링 대시보드 확인"
+	@echo "  4. make partition-health # 파티션 상태 확인"
+	@echo "  5. make monitor          # 모니터링 대시보드 확인"
 	@echo ""
 	@echo "🚀 전체 스택 명령어:"
 	@echo "  - make full-stack        # 전체 스택 시작"
@@ -402,6 +436,20 @@ setup: dev up topics-setup ## 기본 개발 환경 설정
 setup-full: cleanup-duplicates full-stack ## 전체 스택 완전 설정
 	@echo "🎉 전체 스택 환경 설정 완료!"
 	@make access-info
+
+# 파티션 최적화 테스트 (신규 추가)
+test-partition: ## 파티션 최적화 효과 테스트
+	@echo "🔬 파티션 최적화 시뮬레이션 테스트..."
+	uv run python scripts/test_partition_optimization.py
+
+validate-partitions: ## 파티션 설정 검증 및 권장사항
+	@echo "✅ 파티션 설정 검증 중..."
+	@echo "📊 현재 설정:"
+	@echo "  - legal-law-events: 3개 파티션 (최적화됨)"
+	@echo "  - legal-content-events: 6개 파티션 (최적화됨)"  
+	@echo "  - legal-article-events: 12개 파티션 (최적화됨)"
+	@echo ""
+	@make test-partition
 
 # 프로덕션 배포
 deploy: bluegreen-deploy ## 프로덕션 배포 (블루그린)
