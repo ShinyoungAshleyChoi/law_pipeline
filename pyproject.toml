@@ -1,0 +1,48 @@
+[project]
+name = "legal-data-pipeline"
+version = "0.1.0"
+description = "법제처 API 데이터 파이프라인 - 법령 및 조항 데이터 수집/관리 시스템"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mysql-connector-python>=8.2.0",
+    "PyMySQL>=1.1.0",
+    "SQLAlchemy>=1.4.28,<2.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "structlog>=23.2.0",
+    "colorlog>=6.8.0",
+    "requests>=2.31.0",
+    "urllib3>=2.1.0",
+    "pandas>=2.1.4",
+    "numpy>=1.25.2",
+    "apache-airflow>=2.10.0",
+    "slack-sdk>=3.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.11.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

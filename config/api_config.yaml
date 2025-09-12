@@ -1,0 +1,25 @@
+legal_api:
+  base_url: "https://open.law.go.kr/LSO/openApi"
+  endpoints:
+    law_list: "/lawList.do"
+    law_content: "/lawContent.do" 
+    law_articles: "/lawArticles.do"
+  
+  # API 호출 설정
+  timeout: 30
+  max_retries: 3
+  retry_delay: 5
+  
+  # 요청 제한
+  requests_per_minute: 60
+  batch_size: 100
+  
+  # Mock 데이터 설정 (개발/테스트용)
+  use_mock_data: ${USE_MOCK_DATA:false}
+  mock_data_path: "tests/fixtures/mock_api_responses"
+
+# 증분 업데이트 설정
+incremental_sync:
+  default_lookback_days: 7
+  max_lookback_days: 30
+  sync_batch_size: 50
