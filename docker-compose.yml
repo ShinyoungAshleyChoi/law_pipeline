@@ -1,0 +1,405 @@
+version: '3.8'
+
+services:
+  # ==================== Zookeeper ====================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: legal-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_MAX_CLIENT_CNXNS: 60
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'ruok' | nc localhost 2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  # ==================== Kafka Brokers ====================
+  kafka1:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka1
+    container_name: legal-kafka1
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_JMX_PORT: 19092
+      KAFKA_JMX_OPTS: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=kafka1 -Dcom.sun.management.jmxremote.rmi.port=19092
+      # 성능 최적화 설정
+      KAFKA_NUM_NETWORK_THREADS: 8
+      KAFKA_NUM_IO_THREADS: 8
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7일
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824  # 1GB
+      KAFKA_LOG_CLEANUP_POLICY: delete
+    volumes:
+      - kafka1_data:/var/lib/kafka/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    networks:
+      - legal-network
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka2
+    container_name: legal-kafka2
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9093:9093"
+      - "19093:19093"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_JMX_PORT: 19093
+      KAFKA_JMX_OPTS: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=kafka2 -Dcom.sun.management.jmxremote.rmi.port=19093
+      # 성능 최적화 설정 (kafka1과 동일)
+      KAFKA_NUM_NETWORK_THREADS: 8
+      KAFKA_NUM_IO_THREADS: 8
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_CLEANUP_POLICY: delete
+    volumes:
+      - kafka2_data:/var/lib/kafka/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9093", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    networks:
+      - legal-network
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka3
+    container_name: legal-kafka3
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9094:9094"
+      - "19094:19094"
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:29094,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29094,PLAINTEXT_HOST://0.0.0.0:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_JMX_PORT: 19094
+      KAFKA_JMX_OPTS: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=kafka3 -Dcom.sun.management.jmxremote.rmi.port=19094
+      # 성능 최적화 설정 (kafka1과 동일)
+      KAFKA_NUM_NETWORK_THREADS: 8
+      KAFKA_NUM_IO_THREADS: 8
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_CLEANUP_POLICY: delete
+    volumes:
+      - kafka3_data:/var/lib/kafka/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9094", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    networks:
+      - legal-network
+
+  # ==================== Kafka UI ====================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: legal-kafka-ui
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: legal-kafka-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:29092,kafka2:29093,kafka3:29094
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      KAFKA_CLUSTERS_0_READONLY: false
+      KAFKA_CLUSTERS_0_JMXPORT: 19092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    restart: unless-stopped
+    networks:
+      - legal-network
+
+  # ==================== Schema Registry ====================
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.4.0
+    hostname: schema-registry
+    container_name: legal-schema-registry
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29093,kafka3:29094
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 3
+      SCHEMA_REGISTRY_DEBUG: 'false'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  # ==================== MySQL Blue-Green ====================
+  mysql-blue:
+    image: mysql:8.0
+    container_name: legal-mysql-blue
+    hostname: mysql-blue
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: legal_root_2024!
+      MYSQL_DATABASE: legal_db
+      MYSQL_USER: legal_user
+      MYSQL_PASSWORD: legal_pass_2024!
+      # 성능 최적화
+      MYSQL_INNODB_BUFFER_POOL_SIZE: 1G
+      MYSQL_INNODB_LOG_FILE_SIZE: 256M
+      MYSQL_INNODB_FLUSH_LOG_AT_TRX_COMMIT: 2
+      MYSQL_INNODB_FLUSH_METHOD: O_DIRECT
+      MYSQL_MAX_CONNECTIONS: 200
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --innodb-buffer-pool-size=1G
+      --innodb-log-file-size=256M
+      --innodb-flush-log-at-trx-commit=2
+      --innodb-flush-method=O_DIRECT
+      --max-connections=200
+      --slow-query-log=1
+      --slow-query-log-file=/var/log/mysql/slow.log
+      --long-query-time=2
+      --log-error=/var/log/mysql/error.log
+      --general-log=0
+    volumes:
+      - mysql_blue_data:/var/lib/mysql
+      - mysql_blue_logs:/var/log/mysql
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/mysql/init-blue.sql:/docker-entrypoint-initdb.d/02-init-blue.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "legal_user", "-plegal_pass_2024!"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  mysql-green:
+    image: mysql:8.0
+    container_name: legal-mysql-green
+    hostname: mysql-green
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: legal_root_2024!
+      MYSQL_DATABASE: legal_db
+      MYSQL_USER: legal_user
+      MYSQL_PASSWORD: legal_pass_2024!
+      # 성능 최적화 (Blue와 동일)
+      MYSQL_INNODB_BUFFER_POOL_SIZE: 1G
+      MYSQL_INNODB_LOG_FILE_SIZE: 256M
+      MYSQL_INNODB_FLUSH_LOG_AT_TRX_COMMIT: 2
+      MYSQL_INNODB_FLUSH_METHOD: O_DIRECT
+      MYSQL_MAX_CONNECTIONS: 200
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --innodb-buffer-pool-size=1G
+      --innodb-log-file-size=256M
+      --innodb-flush-log-at-trx-commit=2
+      --innodb-flush-method=O_DIRECT
+      --max-connections=200
+      --slow-query-log=1
+      --slow-query-log-file=/var/log/mysql/slow.log
+      --long-query-time=2
+      --log-error=/var/log/mysql/error.log
+      --general-log=0
+    volumes:
+      - mysql_green_data:/var/lib/mysql
+      - mysql_green_logs:/var/log/mysql
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/mysql/init-green.sql:/docker-entrypoint-initdb.d/02-init-green.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "legal_user", "-plegal_pass_2024!"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  # ==================== Redis (캐싱 및 세션) ====================
+  redis:
+    image: redis:7.0-alpine
+    container_name: legal-redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: legal_redis_2024!
+    command: >
+      redis-server
+      --requirepass legal_redis_2024!
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "legal_redis_2024!", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - legal-network
+
+  # ==================== Monitoring ====================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: legal-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+    restart: unless-stopped
+    networks:
+      - legal-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: legal-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: legal_grafana_2024!
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    networks:
+      - legal-network
+
+# ==================== Networks ====================
+networks:
+  legal-network:
+    driver: bridge
+    name: legal-network
+
+# ==================== Volumes ====================
+volumes:
+  # Kafka & Zookeeper
+  zookeeper_data:
+    name: legal_zookeeper_data
+  zookeeper_logs:
+    name: legal_zookeeper_logs
+  kafka1_data:
+    name: legal_kafka1_data
+  kafka2_data:
+    name: legal_kafka2_data
+  kafka3_data:
+    name: legal_kafka3_data
+  
+  # MySQL Blue-Green
+  mysql_blue_data:
+    name: legal_mysql_blue_data
+  mysql_blue_logs:
+    name: legal_mysql_blue_logs
+  mysql_green_data:
+    name: legal_mysql_green_data
+  mysql_green_logs:
+    name: legal_mysql_green_logs
+  
+  # Redis
+  redis_data:
+    name: legal_redis_data
+  
+  # Monitoring
+  prometheus_data:
+    name: legal_prometheus_data
+  grafana_data:
+    name: legal_grafana_data

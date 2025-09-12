@@ -1,0 +1,266 @@
+version: '3.8'
+
+# Blue-Green Deployment Extension for Legal Data Pipeline
+# This extends the main docker-compose.yml with blue-green specific services
+
+services:
+  # ==================== Application Services - Blue Environment ====================
+  app-blue:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.app
+    container_name: legal-app-blue
+    hostname: app-blue
+    ports:
+      - "8001:8000"  # Blue environment port
+    environment:
+      - ENVIRONMENT=blue
+      - DB_HOST=mysql-blue
+      - DB_PORT=3306
+      - DB_NAME=legal_db
+      - DB_USER=legal_user
+      - DB_PASSWORD=legal_pass_2024!
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=legal_redis_2024!
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29093,kafka3:29094
+      - APP_ENV=blue
+      - LOG_LEVEL=INFO
+      - UV_CACHE_DIR=/tmp/uv-cache
+    volumes:
+      - ../src:/app/src:ro
+      - ../config:/app/config:ro
+      - app_blue_logs:/app/logs
+      - uv_cache:/tmp/uv-cache
+    depends_on:
+      mysql-blue:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka1:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - legal-network
+
+  # ==================== Application Services - Green Environment ====================
+  app-green:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.app
+    container_name: legal-app-green
+    hostname: app-green
+    ports:
+      - "8002:8000"  # Green environment port
+    environment:
+      - ENVIRONMENT=green
+      - DB_HOST=mysql-green
+      - DB_PORT=3306
+      - DB_NAME=legal_db
+      - DB_USER=legal_user
+      - DB_PASSWORD=legal_pass_2024!
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=legal_redis_2024!
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29093,kafka3:29094
+      - APP_ENV=green
+      - LOG_LEVEL=INFO
+      - UV_CACHE_DIR=/tmp/uv-cache
+    volumes:
+      - ../src:/app/src:ro
+      - ../config:/app/config:ro
+      - app_green_logs:/app/logs
+      - uv_cache:/tmp/uv-cache
+    depends_on:
+      mysql-green:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka1:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - legal-network
+
+  # ==================== Load Balancer (Nginx) ====================
+  nginx:
+    image: nginx:alpine
+    container_name: legal-nginx
+    hostname: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/maintenance.html:/usr/share/nginx/html/maintenance.html:ro
+      - nginx_logs:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+    depends_on:
+      - app-blue
+      - app-green
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - legal-network
+
+  # ==================== Deployment Controller ====================
+  deployment-controller:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.controller
+    container_name: legal-deployment-controller
+    hostname: deployment-controller
+    ports:
+      - "9000:9000"  # Deployment API
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=legal_redis_2024!
+      - MYSQL_BLUE_HOST=mysql-blue
+      - MYSQL_GREEN_HOST=mysql-green
+      - MYSQL_PORT=3306
+      - MYSQL_USER=legal_user
+      - MYSQL_PASSWORD=legal_pass_2024!
+      - MYSQL_DATABASE=legal_db
+      - NGINX_CONFIG_PATH=/etc/nginx/nginx.conf
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - LOG_LEVEL=INFO
+      - UV_CACHE_DIR=/tmp/uv-cache
+    volumes:
+      - ../src:/app/src:ro
+      - ../config:/app/config:ro
+      - ../deployment:/app/deployment:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - deployment_logs:/app/logs
+      - deployment_backups:/app/backups
+      - uv_cache:/tmp/uv-cache
+    depends_on:
+      - redis
+      - mysql-blue
+      - mysql-green
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - legal-network
+
+  # ==================== Health Check Service ====================
+  health-monitor:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.monitor
+    container_name: legal-health-monitor
+    hostname: health-monitor
+    environment:
+      - BLUE_APP_URL=http://app-blue:8000
+      - GREEN_APP_URL=http://app-green:8000
+      - NGINX_URL=http://nginx:80
+      - CHECK_INTERVAL=30
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=legal_redis_2024!
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - LOG_LEVEL=INFO
+      - UV_CACHE_DIR=/tmp/uv-cache
+    volumes:
+      - ../src:/app/src:ro
+      - ../deployment:/app/deployment:ro
+      - health_monitor_logs:/app/logs
+      - uv_cache:/tmp/uv-cache
+    depends_on:
+      - app-blue
+      - app-green
+      - nginx
+      - redis
+    restart: unless-stopped
+    networks:
+      - legal-network
+
+  # ==================== Database Migration Service ====================
+  db-migration:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.migration
+    container_name: legal-db-migration
+    hostname: db-migration
+    environment:
+      - MYSQL_BLUE_HOST=mysql-blue
+      - MYSQL_GREEN_HOST=mysql-green
+      - MYSQL_PORT=3306
+      - MYSQL_USER=legal_user
+      - MYSQL_PASSWORD=legal_pass_2024!
+      - MYSQL_DATABASE=legal_db
+      - MIGRATION_TIMEOUT=300
+      - LOG_LEVEL=INFO
+      - UV_CACHE_DIR=/tmp/uv-cache
+    volumes:
+      - ../src:/app/src:ro
+      - ../scripts:/app/scripts:ro
+      - migration_logs:/app/logs
+      - migration_data:/app/data
+      - uv_cache:/tmp/uv-cache
+    depends_on:
+      mysql-blue:
+        condition: service_healthy
+      mysql-green:
+        condition: service_healthy
+    profiles:
+      - migration  # Only run when explicitly requested
+    networks:
+      - legal-network
+
+# ==================== Additional Volumes ====================
+volumes:
+  # Application logs
+  app_blue_logs:
+    name: legal_app_blue_logs
+  app_green_logs:
+    name: legal_app_green_logs
+  
+  # Nginx
+  nginx_logs:
+    name: legal_nginx_logs
+  nginx_cache:
+    name: legal_nginx_cache
+  
+  # Deployment
+  deployment_logs:
+    name: legal_deployment_logs
+  deployment_backups:
+    name: legal_deployment_backups
+  
+  # Health monitoring
+  health_monitor_logs:
+    name: legal_health_monitor_logs
+  
+  # Database migration
+  migration_logs:
+    name: legal_migration_logs
+  migration_data:
+    name: legal_migration_data
+  
+  # UV cache (for faster builds and dependency management)
+  uv_cache:
+    name: legal_uv_cache
+
+# ==================== Networks ====================
+networks:
+  legal-network:
+    external: true
