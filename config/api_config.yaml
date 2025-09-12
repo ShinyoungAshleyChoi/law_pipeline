@@ -16,7 +16,10 @@ legal_api:
   
   # Mock 데이터 설정 (개발/테스트용)
   use_mock_data: ${USE_MOCK_DATA:true}
-  mock_data_path: "tests/fixtures/mock_api_responses"
+  mock_data_path: "sample_data"
+  mock_api_delay: ${MOCK_API_DELAY:true}
+  mock_api_error_rate: ${MOCK_API_ERROR_RATE:0.02}
+  mock_data_count: ${MOCK_DATA_COUNT:50}
 
 # 증분 업데이트 설정
 incremental_sync:

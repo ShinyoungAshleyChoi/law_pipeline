@@ -129,7 +129,10 @@ class ConfigManager:
                 requests_per_minute=api_config.get("requests_per_minute", 60),
                 batch_size=api_config.get("batch_size", 100),
                 use_mock_data=api_config.get("use_mock_data", False),
-                mock_data_path=api_config.get("mock_data_path")
+                mock_data_path=api_config.get("mock_data_path"),
+                mock_api_delay=api_config.get("mock_api_delay", True),
+                mock_api_error_rate=api_config.get("mock_api_error_rate", 0.02),
+                mock_data_count=api_config.get("mock_data_count", 50)
             )
         
         return self._api_config
@@ -175,6 +178,22 @@ class ConfigManager:
                 )
         
         return self._slack_config
+    
+    def is_mock_enabled(self) -> bool:
+        """Mock 환경 사용 여부"""
+        return self.mock.enabled
+    
+    def get_environment_type(self) -> str:
+        """현재 환경 타입 반환"""
+        return self.mock.environment_type
+    
+    def setup_mock_environment(self):
+        """Mock 환경 설정"""
+        if not self.is_mock_enabled():
+            return None
+            
+        from .mock.mock_config import setup_mock_environment
+        return setup_mock_environment(self.get_environment_type())
 
 # 전역 설정 인스턴스
 config = ConfigManager()

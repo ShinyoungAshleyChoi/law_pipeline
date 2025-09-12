@@ -69,7 +69,7 @@ up: ## 인프라 시작 (Docker Compose)
 up-clean: ## 인프라 시작 (볼륨 초기화)
 	@echo "🧹 볼륨 초기화하고 인프라 시작 중..."
 	@chmod +x scripts/start_infrastructure.sh
-	@./scripts/start_infrastructure.sh --clean-volumes
+sh --clean-volumes
 
 down: ## 인프라 중지
 	@echo "🛑 인프라 중지 중..."
@@ -283,7 +283,7 @@ full-stack-clean: ## 전체 스택 완전 정리
 	@make airflow-clean || true
 	@make clean-all
 
-# Kafka 파티션 모니터링 (신규 추가)
+# Kafka 파티션 모니터링
 partition-health: ## Kafka 파티션 건강 상태 체크
 	@echo "🔍 Kafka 파티션 건강 상태 체크 중..."
 	uv run python -m src.kafka.partition_monitor --action health
@@ -318,6 +318,8 @@ status-all: ## 모든 서비스 상태 확인
 	@docker system df
 	@echo ""
 	@make bluegreen-status 2>/dev/null || echo "블루그린 시스템 미실행"
+	@echo ""
+	@make mock-status
 
 access-info: ## 전체 접속 정보 출력
 	@echo "🌐 전체 시스템 접속 정보:"
@@ -350,6 +352,12 @@ access-info: ## 전체 접속 정보 출력
 	@echo "   🔍 토픽 분석:       make partition-analyze TOPIC=토픽명"
 	@echo "   💡 최적화 제안:     make partition-suggest TOPIC=토픽명"
 	@echo "   ⚡ 전체 최적화:     make partition-optimize"
+	@echo ""
+	@echo "🎭 Mock 환경:"
+	@echo "   📊 Mock 상태:       make mock-status"
+	@echo "   🔧 Mock 설정:       make mock-setup"
+	@echo "   🧪 Mock 테스트:     make mock-test-all"
+	@echo "   🚀 Mock 실행:       make mock-run"
 
 # 모니터링
 monitor: ## 모니터링 대시보드 열기
@@ -418,26 +426,39 @@ clean-all: clean down-volumes cleanup-duplicates ## 모든 데이터 및 캐시 
 	@echo "🗑️  전체 정리 완료"
 
 # 전체 워크플로우
-setup: dev up topics-setup ## 기본 개발 환경 설정
+setup: dev mock-setup up topics-setup ## 기본 개발 환경 설정
 	@echo "🎉 기본 개발 환경 설정 완료!"
 	@echo ""
 	@echo "다음 단계:"
-	@echo "  1. make db-init          # 데이터베이스 초기화"
-	@echo "  2. make db-load          # Mock 데이터 적재"
-	@echo "  3. make test             # 테스트 실행"
-	@echo "  4. make partition-health # 파티션 상태 확인"
-	@echo "  5. make monitor          # 모니터링 대시보드 확인"
+	@echo "  1. make mock-run          # Mock 파이프라인 실행"
+	@echo "  2. make mock-test-all     # Mock 테스트 실행"
+	@echo "  3. make test              # 전체 테스트 실행"
+	@echo "  4. make partition-health  # 파티션 상태 확인"
+	@echo "  5. make monitor           # 모니터링 대시보드 확인"
 	@echo ""
 	@echo "🚀 전체 스택 명령어:"
-	@echo "  - make full-stack        # 전체 스택 시작"
-	@echo "  - make bluegreen-deploy  # 블루그린 배포"
-	@echo "  - make access-info       # 접속 정보 확인"
+	@echo "  - make full-stack         # 전체 스택 시작"
+	@echo "  - make bluegreen-deploy   # 블루그린 배포"
+	@echo "  - make access-info        # 접속 정보 확인"
 
 setup-full: cleanup-duplicates full-stack ## 전체 스택 완전 설정
 	@echo "🎉 전체 스택 환경 설정 완료!"
 	@make access-info
 
-# 파티션 최적화 테스트 (신규 추가)
+setup-mock: ## Mock 환경만 설정 (빠른 개발용)
+	@echo "🎭 Mock 개발 환경 설정 중..."
+	@make mock-setup
+	@make mock-test-all
+	@echo ""
+	@echo "🎉 Mock 환경 설정 완료!"
+	@echo ""
+	@echo "Mock 환경 사용법:"
+	@echo "  - make mock-run           # 전체 파이프라인 실행"
+	@echo "  - make mock-run-search    # 문서 검색"
+	@echo "  - make mock-run-stats     # 통계 조회"
+	@echo "  - make mock-status        # Mock 상태 확인"
+
+# 파티션 최적화 테스트
 test-partition: ## 파티션 최적화 효과 테스트
 	@echo "🔬 파티션 최적화 시뮬레이션 테스트..."
 	uv run python scripts/test_partition_optimization.py
