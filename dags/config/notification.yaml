@@ -1,0 +1,75 @@
+slack:
+  bot_token: ${SLACK_BOT_TOKEN}
+  channel_id: ${SLACK_CHANNEL_ID}
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  
+  # 알림 설정
+  enable_notifications: false
+  retry_attempts: 3
+  retry_delay: 5
+  timeout: 30
+  
+  # 메시지 템플릿
+  templates:
+    error_alert: |
+      🚨 *데이터 파이프라인 오류 발생*
+      
+      *시간:* {timestamp}
+      *작업:* {job_name}
+      *오류:* {error_message}
+      *상세:* {error_details}
+      
+      즉시 확인이 필요합니다.
+    
+    batch_success: |
+      ✅ *배치 작업 완료*
+      
+      *시간:* {timestamp}
+      *작업:* {job_name}
+      *처리된 법령:* {processed_laws}개
+      *처리된 조항:* {processed_articles}개
+      *소요 시간:* {duration}
+    
+    batch_failure: |
+      ❌ *배치 작업 실패*
+      
+      *시간:* {timestamp}
+      *작업:* {job_name}
+      *오류:* {error_message}
+      *처리된 법령:* {processed_laws}개
+      *오류 수:* {error_count}개
+      
+      관리자 확인이 필요합니다.
+    
+    critical_alert: |
+      🔥 *긴급 알림*
+      
+      *시간:* {timestamp}
+      *메시지:* {message}
+      
+      즉시 대응이 필요합니다!
+    
+    api_health_warning: |
+      ⚠️ *API 상태 경고*
+      
+      *시간:* {timestamp}
+      *API:* {api_name}
+      *상태:* {status}
+      *응답 시간:* {response_time}ms
+      *오류:* {error_message}
+
+# 알림 레벨별 설정
+notification_levels:
+  INFO:
+    enabled: true
+    channels: ["general"]
+  WARNING:
+    enabled: true
+    channels: ["alerts"]
+  ERROR:
+    enabled: true
+    channels: ["alerts", "critical"]
+  CRITICAL:
+    enabled: true
+    channels: ["alerts", "critical"]
+    mention_users: ["@channel"]
