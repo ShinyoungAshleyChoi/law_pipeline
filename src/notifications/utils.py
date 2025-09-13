@@ -3,8 +3,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 import traceback
 
-from .slack_service import SlackNotificationService, BatchResult
-from ..logging_config import get_logger
+from notifications.slack_service import SlackNotificationService, BatchResult
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

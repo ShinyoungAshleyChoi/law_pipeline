@@ -11,8 +11,8 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import structlog
 
-from src.config import config
-from src.logging_config import get_logger
+from config import config
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -47,7 +47,7 @@ export PYTHONPATH="/app/src:${PYTHONPATH}"
 
 # Start the application with UV
 echo "Starting application server..."
-exec uv run uvicorn src.main:app \
+exec uv run uvicorn main:app \
     --host 0.0.0.0 \
     --port 8000 \
     --log-level info \

@@ -5,10 +5,10 @@ import json
 from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 
-from src.api.models import LawListItem, LawContent, LawArticle, APIHealthStatus, IncrementalUpdateResult
-from src.config import config
-from src.logging_config import get_logger
-from src.notifications.slack_service import slack_service
+from api.models import LawListItem, LawContent, LawArticle, APIHealthStatus, IncrementalUpdateResult
+from config import config
+from logging_config import get_logger
+from notifications.slack_service import slack_service
 
 logger = get_logger(__name__)
 

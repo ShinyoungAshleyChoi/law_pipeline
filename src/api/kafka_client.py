@@ -3,10 +3,10 @@ from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import uuid
 
-from .client import api_client, LegalAPIClient
-from ..kafka.producer import LegalDataProducer
-from ..kafka.models import EventType
-from ..logging_config import get_logger
+from api.client import api_client, LegalAPIClient
+from streaming.producer import LegalDataProducer
+from streaming.models import EventType
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -6,13 +6,13 @@ from datetime import datetime, timedelta, date
 from typing import Dict, Any
 import asyncio
 
-from airflow.sdk import DAG, Param
-from airflow.providers.standard.operators.python import PythonOperator
+from airflow import DAG
+from airflow.operators.python import PythonOperator
 
-from src.api.kafka_client import kafka_integrated_client
-from src.database.repository import LegalDataRepository
-from src.notifications.slack_service import slack_service
-from src.logging_config import get_logger
+from api.kafka_client import kafka_integrated_client
+from database.repository import LegalDataRepository
+from notifications.slack_service import slack_service
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -39,7 +39,7 @@ dag = DAG(
     schedule='0 2 * * *',  # 매일 새벽 2시 실행
     catchup=False,
     max_active_runs=1,
-    tags={'legal', 'kafka', 'pipeline', 'zero-downtime'},
+    tags=['legal', 'kafka', 'pipeline', 'zero-downtime'],
     doc_md="""
     # Kafka 기반 법제처 API 데이터 파이프라인
     
@@ -59,11 +59,11 @@ dag = DAG(
     """,
 
     params={
-        'force_full_sync': Param(False, type="boolean", description="전체 동기화 강제 실행"),
-        'target_date': Param(None, type=["string", "null"], description="대상 날짜"),
-        'batch_size': Param(100, type="integer", minimum=1, maximum=1000),
-        'notification_enabled': Param(True, type="boolean"),
-        'kafka_enabled': Param(True, type="boolean")
+        'force_full_sync': False,
+        'target_date': None,
+        'batch_size': 100,
+        'notification_enabled': True,
+        'kafka_enabled': True
     }
 )
 
@@ -114,9 +114,13 @@ def kafka_produce_legal_data(**context) -> Dict[str, Any]:
         
         # 오류 알림
         slack_service.send_error_alert(
-            title="Kafka Producer 실행 실패",
-            message=f"오류: {str(e)}",
-            context={'dag_id': context['dag'].dag_id}
+            error=e,
+            context={
+                'job_name': 'Kafka Producer',
+                'dag_id': context['dag'].dag_id,
+                'task_id': context['task'].task_id,
+                'logical_date': context['logical_date'].isoformat()
+            }
         )
         
         raise
@@ -153,33 +157,26 @@ def send_completion_notification(**context) -> None:
         status_icon = "✅" if is_success else "⚠️"
         status_text = "성공" if is_success else "부분 성공"
         
-        message = f"""
-{status_icon} Kafka 기반 법제처 데이터 파이프라인 완료
-
-📊 **처리 결과:**
-• 처리된 법령: {sent_laws}개
-• 실패한 법령: {failed_laws}개
-• 처리 시간: {duration:.1f}초
-• 상태: {status_text}
-
-🔄 **Kafka 통합:**
-• Producer → Consumer 비동기 처리
-• 무중단 서비스 보장
-• 메시지 영속성 확보
-        """.strip()
+        # BatchResult 생성
+        from notifications.slack_service import BatchResult
+        
+        batch_result = BatchResult(
+            job_name="Kafka 기반 법제처 데이터 파이프라인",
+            success=is_success,
+            processed_laws=sent_laws,
+            processed_articles=0,  # 이 DAG에서는 법령만 처리
+            error_count=failed_laws,
+            error_message=None if is_success else f"{failed_laws}개 법령 처리 실패",
+            duration=f"{duration:.1f}초" if duration else "알 수 없음"
+        )
         
         # 슬랙 알림 발송
-        if is_success:
-            slack_service.send_info_message(
-                title="Kafka 기반 법제처 파이프라인 완료",
-                message=message
-            )
+        success = slack_service.send_batch_completion_notice(batch_result)
+        
+        if success:
+            logger.info("완료 알림 발송 성공")
         else:
-            slack_service.send_error_alert(
-                title="Kafka 기반 법제처 파이프라인 부분 실패",
-                message=message,
-                context=produce_result
-            )
+            logger.warning("완료 알림 발송 실패")
         
         logger.info("완료 알림 발송 완료")
         

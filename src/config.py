@@ -62,15 +62,86 @@ class ConfigManager:
     """설정 관리자"""
     
     def __init__(self, config_dir: str = "config"):
-        self.config_dir = Path(config_dir)
+        # Airflow 실행 환경 감지
+        if self._is_airflow_environment():
+            # Airflow DAG 실행 환경에서는 dags 폴더 하위의 config 폴더 사용
+            dags_folder = self._get_dags_folder()
+            self.config_dir = Path(dags_folder) / config_dir
+        else:
+            # 일반 환경에서는 기본 config 폴더 사용
+            self.config_dir = Path(config_dir)
+            
         self._database_config: Optional[DatabaseConfig] = None
         self._api_config: Optional[APIConfig] = None
         self._logging_config: Optional[LoggingConfig] = None
         self._slack_config: Optional[SlackConfig] = None
     
+    def _is_airflow_environment(self) -> bool:
+        """Airflow 실행 환경인지 확인"""
+        # Airflow 관련 환경 변수들을 확인
+        airflow_indicators = [
+            'AIRFLOW_HOME',
+            'AIRFLOW__CORE__DAGS_FOLDER',
+            '_AIRFLOW_WWW_USER_USERNAME',
+            'AIRFLOW_CTX_DAG_ID',  # DAG 실행 컨텍스트
+            'AIRFLOW_CTX_TASK_ID'  # Task 실행 컨텍스트
+        ]
+        
+        # Airflow 모듈이 로드되어 있는지 확인
+        airflow_module_loaded = False
+        try:
+            import sys
+            airflow_module_loaded = any('airflow' in module for module in sys.modules.keys())
+        except:
+            pass
+        
+        # 환경 변수 또는 모듈 로드 상태로 판단
+        return any(os.getenv(var) for var in airflow_indicators) or airflow_module_loaded
+    
+    def _get_dags_folder(self) -> str:
+        """Airflow DAGs 폴더 경로 반환"""
+        # 환경 변수에서 DAGs 폴더 경로 확인
+        dags_folder = os.getenv('AIRFLOW__CORE__DAGS_FOLDER')
+        
+        if not dags_folder:
+            # 기본 Airflow 홈 디렉토리에서 dags 폴더 사용
+            airflow_home = os.getenv('AIRFLOW_HOME', os.path.expanduser('~/airflow'))
+            dags_folder = os.path.join(airflow_home, 'dags')
+        
+        # 현재 실행 중인 스크립트의 위치에서 dags 폴더를 찾는 대안적 방법
+        if not os.path.exists(dags_folder):
+            current_file = Path(__file__).resolve()
+            # config.py가 dags 폴더 내부에 있다고 가정하고 상위 폴더 탐색
+            for parent in current_file.parents:
+                if parent.name == 'dags' or (parent / 'dags').exists():
+                    dags_folder = str(parent / 'dags' if parent.name != 'dags' else parent)
+                    break
+        
+        return dags_folder
+    
+    def get_config_path(self) -> Path:
+        """현재 설정 디렉토리 경로 반환"""
+        return self.config_dir
+    
+    def get_environment_info(self) -> Dict[str, Any]:
+        """현재 환경 정보 반환 (디버깅용)"""
+        return {
+            "is_airflow_environment": self._is_airflow_environment(),
+            "config_directory": str(self.config_dir),
+            "airflow_home": os.getenv('AIRFLOW_HOME'),
+            "dags_folder": os.getenv('AIRFLOW__CORE__DAGS_FOLDER'),
+            "dag_id": os.getenv('AIRFLOW_CTX_DAG_ID'),
+            "task_id": os.getenv('AIRFLOW_CTX_TASK_ID'),
+        }
+    
     def _load_yaml_config(self, filename: str) -> Dict[str, Any]:
         """YAML 설정 파일 로드"""
         config_path = self.config_dir / filename
+        
+        # 디버그 정보 출력 (개발 중 확인용)
+        print(f"[ConfigManager] Airflow 환경 감지: {self._is_airflow_environment()}")
+        print(f"[ConfigManager] 설정 파일 로드 경로: {config_path}")
+        
         if not config_path.exists():
             raise FileNotFoundError(f"설정 파일을 찾을 수 없습니다: {config_path}")
         

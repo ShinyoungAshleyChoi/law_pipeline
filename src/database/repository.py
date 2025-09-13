@@ -13,7 +13,7 @@ from .models import (
     dict_to_law_list, dict_to_law_content, dict_to_law_article,
     dict_to_batch_job, dict_to_sync_status
 )
-from ..logging_config import get_logger
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

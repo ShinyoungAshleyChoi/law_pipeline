@@ -645,7 +645,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY src/ ./src/
-CMD ["python", "-m", "src.collectors.legal_api_collector"]
+CMD ["python", "-m", "collectors.legal_api_collector"]
 
 # Dockerfile.worker - 배치 작업 워커
 FROM python:3.9-slim
@@ -653,7 +653,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY src/ ./src/
-CMD ["python", "-m", "src.processors.data_processor"]
+CMD ["python", "-m", "processors.data_processor"]
 ```
 
 ### 모니터링 및 로깅

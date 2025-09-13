@@ -8,7 +8,7 @@ import uuid
 from airflow.models import Variable
 from airflow.exceptions import AirflowException
 
-from ...logging_config import get_logger
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

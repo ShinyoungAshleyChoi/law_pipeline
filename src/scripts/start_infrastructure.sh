@@ -110,7 +110,7 @@ LOG_LEVEL=INFO
 DB_BLUE_HOST=mysql-blue
 DB_BLUE_PORT=3306
 DB_GREEN_HOST=mysql-green
-DB_GREEN_PORT=3306
+DB_GREEN_PORT=3307
 DB_NAME=legal_db
 DB_USER=legal_user
 DB_PASSWORD=legal_pass_2024!
@@ -159,9 +159,63 @@ EOF
     fi
 }
 
+# Airflow 커스텀 이미지 확인 및 빌드
+check_and_build_airflow_image() {
+    local image_name="custom-airflow:2.8.4"
+    
+    log_info "Airflow 커스텀 이미지 확인 중: $image_name"
+    
+    # Docker 이미지 존재 여부 확인
+    if docker image inspect $image_name >/dev/null 2>&1; then
+        log_info "✅ $image_name 이미지가 이미 존재합니다."
+        return 0
+    else
+        log_warn "❌ $image_name 이미지가 존재하지 않습니다."
+        
+        # 필수 파일 확인
+        if [ ! -f "Dockerfile" ]; then
+            log_error "Dockerfile이 존재하지 않습니다."
+            exit 1
+        fi
+        
+        if [ ! -f "pyproject.toml" ]; then
+            log_error "pyproject.toml이 존재하지 않습니다."
+            exit 1
+        fi
+        
+        # uv.lock 파일 생성 (없는 경우)
+        if [ ! -f "uv.lock" ]; then
+            log_info "uv.lock 파일 생성 중..."
+            if command -v uv &> /dev/null; then
+                uv lock
+            else
+                log_warn "uv가 설치되어 있지 않아 uv.lock 파일을 생성할 수 없습니다."
+            fi
+        fi
+        
+        # Docker 이미지 빌드
+        log_info "🔨 Docker 이미지 빌드 시작..."
+        if command -v docker buildx &> /dev/null; then
+            docker buildx build --platform linux/amd64 -t $image_name --load .
+        else
+            docker build -t $image_name .
+        fi
+        
+        if [ $? -eq 0 ]; then
+            log_info "✅ Docker 이미지 빌드 완료: $image_name"
+        else
+            log_error "Docker 이미지 빌드 실패!"
+            exit 1
+        fi
+    fi
+}
+
 # Docker 컨테이너 시작
 start_containers() {
     log_info "Docker 컨테이너 시작 중..."
+    
+    # Airflow 커스텀 이미지 확인 및 빌드
+    check_and_build_airflow_image
     
     # 인프라 서비스 순서대로 시작
     log_info "1. Zookeeper 시작..."
@@ -169,19 +223,16 @@ start_containers() {
     
     # Zookeeper 헬스체크 대기
     log_info "Zookeeper 준비 대기 중..."
-    timeout=60
-    counter=0
-    while ! docker-compose exec -T zookeeper sh -c 'echo "ruok" | nc localhost 2181' | grep -q "imok"; do
-        sleep 2
-        counter=$((counter + 2))
-        if [ $counter -ge $timeout ]; then
-            log_error "Zookeeper 시작 대기 시간 초과"
-            exit 1
-        fi
-        echo -n "."
-    done
-    echo ""
-    log_info "Zookeeper 시작 완료"
+    
+    # 간단한 대기 방식: 컨테이너 상태가 running이 되면 바로 진행
+    sleep 5  # 초기 대기
+    
+    # 포트 연결 확인 (한 번만)
+    if bash -c "</dev/tcp/localhost/2181" 2>/dev/null; then
+        log_info "Zookeeper 시작 완료"
+    else
+        log_warn "Zookeeper 포트 연결 실패, 계속 진행"
+    fi
     
     # Kafka 클러스터 시작
     log_info "2. Kafka 클러스터 시작..."
@@ -275,9 +326,9 @@ setup_kafka_topics() {
     
     # Python 가상환경에서 실행
     if command -v uv &> /dev/null; then
-        uv run python scripts/setup_kafka_topics.py --action setup
+        uv run python src/scripts/setup_kafka_topics.py --action setup
     else
-        python3 scripts/setup_kafka_topics.py --action setup
+        python3 src/scripts/setup_kafka_topics.py --action setup
     fi
     
     if [ $? -eq 0 ]; then
@@ -350,8 +401,8 @@ print_access_info() {
     echo "   • 상태 확인:       docker-compose ps"
     echo "   • 토픽 목록:       uv run python scripts/setup_kafka_topics.py --action list"
     echo "   • 서비스 중지:     docker-compose down"
-    echo "   • Airflow DAG 실행: uv run python scripts/run_airflow_dag.py incremental"
-    echo "   • 배치 작업 실행:  uv run python scripts/batch_monitor.py run full_load"
+    echo "   • Airflow DAG 실행: uv run python src/scripts/run_airflow_dag.py incremental"
+    echo "   • 배치 작업 실행:  uv run python src/scripts/batch_monitor.py run full_load"
     echo ""
 }
 

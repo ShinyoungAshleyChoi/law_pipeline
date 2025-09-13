@@ -5,7 +5,7 @@ import structlog
 import colorlog
 from pathlib import Path
 from typing import Optional
-from .config import config
+from config import config
 
 def setup_logging(
     level: str = None,

@@ -169,7 +169,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
 # 애플리케이션 시작
-CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0"]
 ```
 
 ## 🚨 마이그레이션 가이드

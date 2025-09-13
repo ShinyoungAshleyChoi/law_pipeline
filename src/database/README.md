@@ -89,7 +89,7 @@ mysql -u username -p database_name < src/legal_data_pipeline/database/schema.sql
 ### 2. 프로그래밍 방식 사용
 
 ```python
-from src.legal_data_pipeline.database import db_connection, Law, Article
+from legal_data_pipeline.database import db_connection, Law, Article
 
 # 연결 테스트
 db_connection.test_connection()

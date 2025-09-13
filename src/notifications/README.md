@@ -21,7 +21,7 @@
 ### 기본 사용법
 
 ```python
-from src.notifications import (
+from notifications import (
     notify_error,
     notify_batch_success,
     notify_batch_failure,
@@ -56,7 +56,7 @@ notify_critical("연속 3회 배치 작업 실패 발생")
 ### 특정 오류 유형별 알림
 
 ```python
-from src.notifications import (
+from notifications import (
     notify_api_error,
     notify_database_error,
     notify_validation_error,
@@ -79,7 +79,7 @@ notify_system_error("메모리_관리자", "메모리 부족")
 ### 데코레이터 사용
 
 ```python
-from src.notifications import with_error_notification, with_batch_notification
+from notifications import with_error_notification, with_batch_notification
 
 # 오류 발생 시 자동 알림
 @with_error_notification(job_name="법령_데이터_수집")

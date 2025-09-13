@@ -5,7 +5,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     hostname: zookeeper
-    container_name: legal-zookeeper
+    container_name: zookeeper
     ports:
       - "2181:2181"
     environment:
@@ -30,7 +30,7 @@ services:
   kafka1:
     image: confluentinc/cp-kafka:7.4.0
     hostname: kafka1
-    container_name: legal-kafka1
+    container_name: kafka1
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -41,8 +41,8 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
@@ -74,7 +74,7 @@ services:
   kafka2:
     image: confluentinc/cp-kafka:7.4.0
     hostname: kafka2
-    container_name: legal-kafka2
+    container_name: kafka2
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -118,7 +118,7 @@ services:
   kafka3:
     image: confluentinc/cp-kafka:7.4.0
     hostname: kafka3
-    container_name: legal-kafka3
+    container_name: kafka3
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -162,7 +162,7 @@ services:
   # ==================== Kafka UI ====================
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
-    container_name: legal-kafka-ui
+    container_name: kafka-ui
     depends_on:
       - kafka1
       - kafka2
@@ -171,7 +171,7 @@ services:
       - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: legal-kafka-cluster
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:29092,kafka2:29093,kafka3:29094
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:9092,kafka2:9093,kafka3:9094
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
       KAFKA_CLUSTERS_0_READONLY: false
       KAFKA_CLUSTERS_0_JMXPORT: 19092
@@ -185,7 +185,7 @@ services:
   schema-registry:
     image: confluentinc/cp-schema-registry:7.4.0
     hostname: schema-registry
-    container_name: legal-schema-registry
+    container_name: schema-registry
     depends_on:
       - kafka1
       - kafka2
@@ -194,7 +194,7 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29093,kafka3:29094
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9093,kafka3:9094
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 3
@@ -211,7 +211,7 @@ services:
   # ==================== MySQL Blue-Green ====================
   mysql-blue:
     image: mysql:8.0
-    container_name: legal-mysql-blue
+    container_name: mysql-blue
     hostname: mysql-blue
     ports:
       - "3306:3306"
@@ -256,7 +256,7 @@ services:
 
   mysql-green:
     image: mysql:8.0
-    container_name: legal-mysql-green
+    container_name: mysql-green
     hostname: mysql-green
     ports:
       - "3307:3306"
@@ -302,7 +302,7 @@ services:
   # ==================== Redis (캐싱 및 세션) ====================
   redis:
     image: redis:7.0-alpine
-    container_name: legal-redis
+    container_name: redis
     hostname: redis
     ports:
       - "6379:6379"
@@ -329,7 +329,7 @@ services:
   # ==================== Apache Airflow ====================
   postgres:
     image: postgres:13
-    container_name: legal-postgres
+    container_name: postgres
     hostname: postgres
     environment:
       POSTGRES_USER: airflow
@@ -347,8 +347,8 @@ services:
       - legal-network
 
   airflow-webserver:
-    image: apache/airflow:2.7.1-python3.11
-    container_name: legal-airflow-webserver
+    image: custom-airflow:2.8.4
+    container_name: airflow-webserver
     hostname: airflow-webserver
     depends_on:
       postgres:
@@ -364,14 +364,14 @@ services:
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
       AIRFLOW_CONN_MYSQL_BLUE: 'mysql://legal_user:legal_pass_2024!@mysql-blue:3306/legal_db'
-      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3306/legal_db'
-      AIRFLOW_CONN_KAFKA: 'kafka://kafka1:29092,kafka2:29093,kafka3:29094'
+      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3307/legal_db'
+      AIRFLOW_CONN_KAFKA: 'kafka://kafka1:9092,kafka2:9093,kafka3:9094'
       _AIRFLOW_DB_UPGRADE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: airflow
       _AIRFLOW_WWW_USER_PASSWORD: airflow_admin_2024!
     volumes:
-      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/dags
       - ./src/airflow/logs:/opt/airflow/logs
       - ./src/airflow/plugins:/opt/airflow/plugins
       - ./src/airflow/config:/opt/airflow/config
@@ -389,8 +389,8 @@ services:
       - legal-network
 
   airflow-scheduler:
-    image: apache/airflow:2.7.1-python3.11
-    container_name: legal-airflow-scheduler
+    image: custom-airflow:2.8.4
+    container_name: airflow-scheduler
     hostname: airflow-scheduler
     depends_on:
       postgres:
@@ -406,10 +406,10 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW_CONN_MYSQL_BLUE: 'mysql://legal_user:legal_pass_2024!@mysql-blue:3306/legal_db'
-      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3306/legal_db'
+      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3307/legal_db'
       AIRFLOW_CONN_KAFKA: 'kafka://kafka1:29092,kafka2:29093,kafka3:29094'
     volumes:
-      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/dags
       - ./src/airflow/logs:/opt/airflow/logs
       - ./src/airflow/plugins:/opt/airflow/plugins
       - ./src/airflow/config:/opt/airflow/config
@@ -425,8 +425,8 @@ services:
       - legal-network
 
   airflow-worker:
-    image: apache/airflow:2.7.1-python3.11
-    container_name: legal-airflow-worker
+    image: custom-airflow:2.8.4
+    container_name: airflow-worker
     hostname: airflow-worker
     depends_on:
       postgres:
@@ -442,10 +442,10 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW_CONN_MYSQL_BLUE: 'mysql://legal_user:legal_pass_2024!@mysql-blue:3306/legal_db'
-      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3306/legal_db'
+      AIRFLOW_CONN_MYSQL_GREEN: 'mysql://legal_user:legal_pass_2024!@mysql-green:3307/legal_db'
       AIRFLOW_CONN_KAFKA: 'kafka://kafka1:29092,kafka2:29093,kafka3:29094'
     volumes:
-      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/dags
       - ./src/airflow/logs:/opt/airflow/logs
       - ./src/airflow/plugins:/opt/airflow/plugins
       - ./src/airflow/config:/opt/airflow/config
@@ -461,8 +461,8 @@ services:
       - legal-network
 
   airflow-flower:
-    image: apache/airflow:2.7.1-python3.11
-    container_name: legal-airflow-flower
+    image: custom-airflow:2.8.4
+    container_name: airflow-flower
     hostname: airflow-flower
     depends_on:
       redis:
@@ -491,7 +491,7 @@ services:
   # ==================== Monitoring ====================
   prometheus:
     image: prom/prometheus:latest
-    container_name: legal-prometheus
+    container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -510,7 +510,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: legal-grafana
+    container_name: grafana
     ports:
       - "3000:3000"
     environment:
@@ -536,38 +536,38 @@ networks:
 volumes:
   # Kafka & Zookeeper
   zookeeper_data:
-    name: legal_zookeeper_data
+    name: zookeeper_data
   zookeeper_logs:
-    name: legal_zookeeper_logs
+    name: zookeeper_logs
   kafka1_data:
-    name: legal_kafka1_data
+    name: kafka1_data
   kafka2_data:
-    name: legal_kafka2_data
+    name: kafka2_data
   kafka3_data:
-    name: legal_kafka3_data
+    name: kafka3_data
   
   # MySQL Blue-Green
   mysql_blue_data:
-    name: legal_mysql_blue_data
+    name: mysql_blue_data
   mysql_blue_logs:
-    name: legal_mysql_blue_logs
+    name: mysql_blue_logs
   mysql_green_data:
-    name: legal_mysql_green_data
+    name: mysql_green_data
   mysql_green_logs:
-    name: legal_mysql_green_logs
+    name: mysql_green_logs
   
   # Redis
   redis_data:
-    name: legal_redis_data
+    name: redis_data
   
   # Airflow
   postgres_data:
-    name: legal_postgres_data
+    name: postgres_data
   airflow_logs:
-    name: legal_airflow_logs
+    name: airflow_logs
   
   # Monitoring
   prometheus_data:
-    name: legal_prometheus_data
+    name: prometheus_data
   grafana_data:
-    name: legal_grafana_data
+    name: grafana_data

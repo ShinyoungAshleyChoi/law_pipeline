@@ -86,7 +86,7 @@ def main():
         
         # 사용 예시
         print(f"\n📖 사용 예시:")
-        print(f"   python -c \"from src.mock.mock_config import get_mock_environment; env=get_mock_environment(); print(env.get_environment_info())\"")
+        print(f"   python -c \"from mock.mock_config import get_mock_environment; env=get_mock_environment(); print(env.get_environment_info())\"")
         
     except Exception as e:
         print(f"❌ Mock 환경 설정 중 오류 발생: {e}", file=sys.stderr)

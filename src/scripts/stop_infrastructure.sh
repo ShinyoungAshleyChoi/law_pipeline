@@ -226,10 +226,8 @@ main() {
     
     if [ "$remove_volumes_flag" == true ] || [ "$remove_all" == true ]; then
         echo "⚠️  데이터가 모두 삭제되었습니다."
-        echo "   다시 시작하려면: make up-clean"
     else
         echo "💾 데이터가 보존되었습니다."
-        echo "   다시 시작하려면: make up"
     fi
     echo ""
 }

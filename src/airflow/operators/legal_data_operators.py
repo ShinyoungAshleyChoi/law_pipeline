@@ -9,15 +9,10 @@ from airflow.models import BaseOperator
 from airflow.utils.context import Context
 from airflow.exceptions import AirflowException, AirflowSkipException
 
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
-
-from src.api.client import api_client
-# from src.processors.incremental_processor import incremental_processor  # 삭제됨
-from src.database.repository import LegalDataRepository
-from src.notifications.slack_service import slack_service
-from src.logging_config import get_logger
+from api.client import api_client
+from database.repository import LegalDataRepository
+from notifications.slack_service import slack_service
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 

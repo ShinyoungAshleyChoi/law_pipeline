@@ -23,7 +23,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=legal_redis_2024!
-      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29093,kafka3:29094
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:9092,kafka2:9093,kafka3:9094
       - APP_ENV=blue
       - LOG_LEVEL=INFO
       - UV_CACHE_DIR=/tmp/uv-cache
@@ -67,7 +67,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=legal_redis_2024!
-      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29093,kafka3:29094
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:9092,kafka2:9093,kafka3:9094
       - APP_ENV=green
       - LOG_LEVEL=INFO
       - UV_CACHE_DIR=/tmp/uv-cache

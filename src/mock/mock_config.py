@@ -91,7 +91,7 @@ class MockEnvironment:
             return self.api_client
         else:
             # 실제 API 클라이언트를 반환해야 하는 경우
-            from ..api.client import APIClient  # 실제 API 클라이언트
+            from api.client import APIClient  # 실제 API 클라이언트
             return APIClient()
     
     def get_db_connection(self):
@@ -253,7 +253,7 @@ def patch_components_with_mock():
     # API 클라이언트 패치
     if mock_env.use_mock_api:
         try:
-            from ..api import client
+            from api import client
             client.APIClient = lambda *args, **kwargs: mock_env.get_api_client()
             print("API 클라이언트가 Mock으로 패치되었습니다.")
         except ImportError:

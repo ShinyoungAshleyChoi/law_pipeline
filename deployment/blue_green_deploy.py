@@ -26,9 +26,9 @@ import redis
 import requests
 from mysql.connector import Error as MySQLError
 
-from src.config import config
-from src.database.connection import DatabaseConnection
-from src.notifications.slack_service import SlackNotificationService, BatchResult
+from config import config
+from database.connection import DatabaseConnection
+from notifications.slack_service import SlackNotificationService, BatchResult
 
 logging.basicConfig(
     level=logging.INFO,
