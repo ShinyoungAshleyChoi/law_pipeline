@@ -7,12 +7,8 @@ import argparse
 import sys
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, Any, Optional
-
-# 프로젝트 루트 경로 추가
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -126,7 +122,7 @@ def get_dag_status(dag_id: str, execution_date: Optional[str] = None) -> Dict[st
                     error=str(e))
         return {'status': 'error', 'message': str(e)}
 
-def list_recent_runs(dag_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+def list_recent_runs(dag_id: str, limit: int = 10) -> list[Dict[str, Any]]:
     """
     최근 DAG 실행 목록 조회
     

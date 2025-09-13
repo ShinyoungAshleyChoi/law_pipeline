@@ -396,6 +396,49 @@ class LegalDataRepository:
             logger.error("배치 작업 조회 실패", job_id=job_id, error=str(e))
             return None
     
+    def get_recent_batch_jobs(self, limit: int = 20) -> List[BatchJob]:
+        """최근 배치 작업 목록 조회"""
+        try:
+            with db_connection.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                sql = """
+                SELECT * FROM batch_jobs 
+                ORDER BY start_time DESC 
+                LIMIT %s
+                """
+                cursor.execute(sql, (limit,))
+                results = cursor.fetchall()
+                cursor.close()
+                
+                return [dict_to_batch_job(row) for row in results]
+                
+        except Exception as e:
+            logger.error("최근 배치 작업 조회 실패", limit=limit, error=str(e))
+            return []
+    
+    def get_failed_batch_jobs(self, days: int = 7) -> List[BatchJob]:
+        """실패한 배치 작업 목록 조회"""
+        try:
+            with db_connection.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                sql = """
+                SELECT * FROM batch_jobs 
+                WHERE status = %s 
+                AND start_time >= DATE_SUB(CURRENT_DATE, INTERVAL %s DAY)
+                ORDER BY start_time DESC
+                """
+                cursor.execute(sql, (JobStatus.FAILED.value, days))
+                results = cursor.fetchall()
+                cursor.close()
+                
+                return [dict_to_batch_job(row) for row in results]
+                
+        except Exception as e:
+            logger.error("실패한 배치 작업 조회 실패", days=days, error=str(e))
+            return []
+    
     # ==================== 동기화 상태 관리 ====================
     
     def get_last_sync_date(self, sync_type: str = "INCREMENTAL") -> Optional[date]:

@@ -1,7 +1,6 @@
 """알림 시스템 모듈"""
 
-from .notification_service import NotificationService, notification_service
-from .slack_service import SlackNotificationService, slack_service, ErrorType, NotificationLevel, BatchResult
+from .slack_service import SlackNotificationService, NotificationLevel, BatchResult
 from .utils import (
     notify_error,
     notify_batch_failure,
@@ -15,12 +14,12 @@ from .utils import (
     with_batch_notification
 )
 
+# 전역 슬랙 알림 서비스 인스턴스
+slack_service = SlackNotificationService()
+
 __all__ = [
-    'NotificationService',
-    'notification_service',
     'SlackNotificationService',
     'slack_service',
-    'ErrorType',
     'NotificationLevel',
     'BatchResult',
     'notify_error',

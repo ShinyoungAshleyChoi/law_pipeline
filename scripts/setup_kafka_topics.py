@@ -5,8 +5,7 @@ import sys
 import time
 import logging
 from typing import Dict, List
-from kafka.admin import KafkaAdminClient, ConfigResource, ConfigResourceType
-from kafka.admin.config_resource import ConfigResource
+from kafka.admin import KafkaAdminClient, ConfigResource, ConfigResourceType, NewTopic
 from kafka import KafkaProducer
 from kafka.errors import TopicAlreadyExistsError, KafkaError
 
@@ -199,8 +198,6 @@ class KafkaTopicSetup:
     
     def create_topics(self):
         """토픽 생성"""
-        from kafka.admin.new_topic import NewTopic
-        
         topic_configs = self.get_topic_configs()
         topics_to_create = []
         

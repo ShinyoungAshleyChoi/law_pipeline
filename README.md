@@ -83,7 +83,22 @@ git clone <repository-url>
 cd legal-data-pipeline
 ```
 
-### 2. 전체 환경 설정 (원클릭 설치)
+### 2. 환경 변수 설정
+
+```bash
+# 환경 변수 템플릿을 복사하여 설정 파일 생성
+cp .env.example .env
+
+# 필요한 값들을 실제 값으로 수정
+nano .env  # 또는 원하는 에디터 사용
+```
+
+**필수 설정 항목:**
+- `DB_PASSWORD`: 데이터베이스 비밀번호
+- `SLACK_BOT_TOKEN`: 슬랙 알림용 봇 토큰 (선택사항)
+- `SLACK_CHANNEL_ID`: 슬랙 채널 ID (선택사항)
+
+### 3. 전체 환경 설정 (원클릭 설치)
 
 ```bash
 make setup
@@ -94,7 +109,7 @@ make setup
 - 인프라 시작 (`make up`) 
 - Kafka 토픽 생성 (`make topics-setup`)
 
-### 3. 데이터 초기화 및 Kafka 파이프라인 테스트
+### 4. 데이터 초기화 및 Kafka 파이프라인 테스트
 
 ```bash
 # 기본 데이터베이스 초기화
@@ -110,7 +125,7 @@ make consumer-run
 make kafka-e2e-test
 ```
 
-### 4. 서비스 접속
+### 5. 서비스 접속
 
 ```bash
 make monitor
@@ -174,28 +189,73 @@ make topics-setup      # 토픽 생성
 make topics-describe   # 토픽 상세 정보
 ```
 
-## 🔧 설정
+## 🔧 환경 설정
 
-### 환경 변수
+### 환경 변수 파일 관리
 
-주요 환경 변수는 `.env` 파일에서 관리됩니다:
+프로젝트는 환경 변수를 통해 다양한 설정을 관리합니다:
 
+- **`.env.example`**: 환경 변수 템플릿 (Git으로 관리됨)
+- **`.env`**: 실제 환경 변수 값 (Git에서 제외됨)
+
+### 주요 환경 변수
+
+주요 환경 변수들과 그 역할:
+
+#### 데이터베이스 설정
 ```bash
-# 데이터베이스
+# Blue-Green 데이터베이스 설정
 ACTIVE_DB_ENV=blue                    # 현재 활성 DB (blue/green)
+DB_BLUE_HOST=mysql-blue
+DB_GREEN_HOST=mysql-green
 DB_USER=legal_user
-DB_PASSWORD=legal_pass_2024!
+DB_PASSWORD=your_db_password_here     # 실제 비밀번호로 변경 필요
+DB_ROOT_PASSWORD=your_root_password_here
+```
 
-# Kafka
+#### Kafka 설정
+```bash
+# Kafka 클러스터 연결 정보
 KAFKA_BOOTSTRAP_SERVERS=localhost:9092,localhost:9093,localhost:9094
+KAFKA_CONSUMER_GROUP_ID=legal-data-consumer
+```
 
-# API
+#### API 설정
+```bash
+# 법제처 API 설정
 LEGAL_API_BASE_URL=https://open.law.go.kr/LSO/openApi
 LEGAL_API_TIMEOUT=30
+LEGAL_API_MAX_RETRIES=3
 
-# 알림
-SLACK_BOT_TOKEN=xoxb-your-token       # 실제 토큰으로 교체 필요
-SLACK_CHANNEL=#legal-data-alerts
+# Mock 환경 설정 (개발용)
+USE_MOCK_DATA=true                    # 개발: true, 운영: false
+USE_MOCK_API=true
+USE_MOCK_DB=true
+```
+
+#### 알림 설정
+```bash
+# Slack 알림 (선택사항)
+SLACK_BOT_TOKEN=xoxb-your-slack-bot-token-here
+SLACK_CHANNEL_ID=C1234567890
+```
+
+### 환경별 설정
+
+#### 개발 환경
+```bash
+APP_ENVIRONMENT=development
+APP_DEBUG=true
+USE_MOCK_DATA=true
+LOG_LEVEL=INFO
+```
+
+#### 프로덕션 환경
+```bash
+APP_ENVIRONMENT=production
+APP_DEBUG=false
+USE_MOCK_DATA=false
+LOG_LEVEL=WARNING
 ```
 
 ### Kafka 토픽 구성

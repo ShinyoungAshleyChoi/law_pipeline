@@ -69,7 +69,7 @@ up: ## 인프라 시작 (Docker Compose)
 up-clean: ## 인프라 시작 (볼륨 초기화)
 	@echo "🧹 볼륨 초기화하고 인프라 시작 중..."
 	@chmod +x scripts/start_infrastructure.sh
-sh --clean-volumes
+	@./scripts/start_infrastructure.sh --clean-volumes
 
 down: ## 인프라 중지
 	@echo "🛑 인프라 중지 중..."

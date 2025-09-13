@@ -5,21 +5,13 @@
 Requirements: 5.1, 5.2, 5.3, 5.4, 9.2
 """
 from datetime import datetime, timedelta, date
-from typing import Dict, Any, List
+from typing import Dict, Any
 import uuid
-import json
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.operators.dummy import DummyOperator
-from airflow.sensors.filesystem import FileSensor
-from airflow.utils.dates import days_ago
-from airflow.utils.task_group import TaskGroup
-from airflow.models import Variable
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+
 from airflow.exceptions import AirflowException, AirflowSkipException
-from airflow.utils.email import send_email
-from airflow.hooks.base import BaseHook
 
 # 프로젝트 모듈 임포트
 import sys
@@ -63,10 +55,10 @@ dag = DAG(
     'legal_data_pipeline',
     default_args=DEFAULT_ARGS,
     description='법제처 API 데이터 파이프라인 - 증분 업데이트',
-    schedule_interval='0 2 * * *',  # 매일 새벽 2시 실행
+    schedule='0 2 * * *',  # 매일 새벽 2시 실행
     catchup=False,
     max_active_runs=1,
-    tags=['legal', 'data-pipeline', 'incremental'],
+    tags={'legal', 'data-pipeline', 'incremental'},
     doc_md="""
     # 법제처 API 데이터 파이프라인
     
@@ -338,36 +330,45 @@ def collect_law_contents(**context) -> Dict[str, Any]:
             # Mock 통계 생성 (실제 처리 로직은 별도 구현 필요)
             all_stats = [{
                 'target_date': date.today(),
-                'total_laws_found': len(collected_laws),
+                'total_laws_found': 0,
                 'new_laws': 0,
                 'updated_laws': 0,
-                'error_count': 0
+                'new_articles': 0,
+                'updated_articles': 0,
+                'error_count': 0,
+                'processing_time_seconds': 0.0,
             }]
-            
+
+            # 결과 집계
+            total_stats = {
+                'total_new_laws': sum(s["new_laws"] for s in all_stats),
+                'total_updated_laws': sum(s["updated_laws"] for s in all_stats),
+                'total_new_articles': sum(s["new_articles"] for s in all_stats),
+                'total_updated_articles': sum(s["updated_articles"] for s in all_stats),
+                'total_errors': sum(s["error_count"] for s in all_stats),
+                'total_processing_time': sum(s["processing_time_seconds"] for s in all_stats),
+                'processed_dates': len(all_stats)
+            }
+
             result = {
                 'job_id': job_id,
-                'processing_completed': True,
+                'collection_type': 'incremental',
+                'success': total_stats['total_errors'] == 0,
+                'stats': total_stats,
                 'daily_stats': [
                     {
-                        'target_date': stats.target_date.isoformat(),
-                        'total_laws_found': stats.total_laws_found,
-                        'new_laws': stats.new_laws,
-                        'updated_laws': stats.updated_laws,
-                        'new_articles': stats.new_articles,
-                        'updated_articles': stats.updated_articles,
-                        'error_count': stats.error_count,
-                        'processing_time_seconds': stats.processing_time_seconds
+                        'target_date': stats["target_date"].isoformat(),
+                        'total_laws_found': stats["total_laws_found"],
+                        'new_laws': stats["new_laws"],
+                        'updated_laws': stats["updated_laws"],
+                        'new_articles': stats["new_articles"],
+                        'updated_articles': stats["updated_articles"],
+                        'error_count': stats["error_count"],
+                        'processing_time_seconds': stats["processing_time_seconds"]
                     }
                     for stats in all_stats
                 ],
-                'total_stats': {
-                    'total_new_laws': sum(s.new_laws for s in all_stats),
-                    'total_updated_laws': sum(s.updated_laws for s in all_stats),
-                    'total_new_articles': sum(s.new_articles for s in all_stats),
-                    'total_updated_articles': sum(s.updated_articles for s in all_stats),
-                    'total_errors': sum(s.error_count for s in all_stats),
-                    'total_processing_time': sum(s.processing_time_seconds for s in all_stats)
-                }
+                'completion_time': datetime.now().isoformat()
             }
             
         else:

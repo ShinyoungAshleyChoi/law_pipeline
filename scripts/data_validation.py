@@ -4,12 +4,9 @@
 import sys
 import os
 import argparse
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-
-# 프로젝트 루트를 Python 경로에 추가
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.database.repository import LegalDataRepository
 from src.database.models import JobType, JobStatus

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""알림 시스템 테스트 스크립트"""
+"""슬랙 알림 시스템 테스트 스크립트"""
 
 import sys
 import os
@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 def test_imports():
     """모듈 임포트 테스트"""
     try:
-        from src.notifications import notification_service
-        print("✅ notification_service 임포트 성공")
+        from src.notifications import slack_service
+        print("✅ slack_service 임포트 성공")
         
         from src.notifications import notify_error
         print("✅ notify_error 임포트 성공")
@@ -26,20 +26,27 @@ def test_imports():
         return False
 
 def test_notification_connection():
-    """알림 시스템 연결 테스트"""
-    print("🧪 알림 시스템 연결 테스트 중...")
+    """슬랙 알림 시스템 연결 테스트"""
+    print("🧪 슬랙 알림 시스템 연결 테스트 중...")
     
-    success = notification_service.test_notification_system()
+    from src.notifications import slack_service
+    
+    success = slack_service.test_connection()
     if success:
-        print("✅ 알림 시스템 연결 성공")
+        print("✅ 슬랙 알림 시스템 연결 성공")
     else:
-        print("❌ 알림 시스템 연결 실패")
+        print("❌ 슬랙 알림 시스템 연결 실패")
     
     return success
 
 def test_error_notifications():
     """오류 알림 테스트"""
     print("\n🚨 오류 알림 테스트 중...")
+    
+    from src.notifications import (
+        notify_error, notify_api_error, notify_database_error,
+        notify_validation_error, notify_system_error
+    )
     
     # 일반 오류 알림
     try:
@@ -68,6 +75,8 @@ def test_batch_notifications():
     """배치 작업 알림 테스트"""
     print("\n📊 배치 작업 알림 테스트 중...")
     
+    from src.notifications import notify_batch_success, notify_batch_failure
+    
     # 배치 성공 알림
     success = notify_batch_success(
         job_name="법령_데이터_동기화",
@@ -89,6 +98,8 @@ def test_critical_notifications():
     """긴급 알림 테스트"""
     print("\n🔥 긴급 알림 테스트 중...")
     
+    from src.notifications import notify_critical
+    
     success = notify_critical(
         "연속 3회 배치 작업 실패 발생",
         job_name="법령_데이터_동기화",
@@ -99,7 +110,7 @@ def test_critical_notifications():
 
 def main():
     """메인 테스트 함수"""
-    print("🚀 법제처 데이터 파이프라인 알림 시스템 테스트 시작")
+    print("🚀 법제처 데이터 파이프라인 슬랙 알림 시스템 테스트 시작")
     print("=" * 60)
     
     # 임포트 테스트
@@ -107,7 +118,7 @@ def main():
         print("\n❌ 모듈 임포트에 실패했습니다.")
         return False
     
-    print("\n✅ 알림 시스템 모듈 구조 검증 완료")
+    print("\n✅ 슬랙 알림 시스템 모듈 구조 검증 완료")
     print("실제 알림 발송 테스트는 슬랙 설정 후 수행 가능합니다.")
     
     return True

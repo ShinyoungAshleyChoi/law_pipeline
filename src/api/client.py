@@ -5,10 +5,10 @@ import json
 from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 
-from .models import LawListItem, LawContent, LawArticle, APIHealthStatus, IncrementalUpdateResult
-from ..config import config
-from ..logging_config import get_logger
-from ..notifications.slack_service import slack_service
+from src.api.models import LawListItem, LawContent, LawArticle, APIHealthStatus, IncrementalUpdateResult
+from src.config import config
+from src.logging_config import get_logger
+from src.notifications.slack_service import slack_service
 
 logger = get_logger(__name__)
 
@@ -21,22 +21,30 @@ class APIError(Exception):
 class LegalAPIClient:
     """법제처 API 클라이언트"""
     
-    def __init__(self):
+    def __init__(self, use_mock: bool = False, timeout: Optional[int] = None):
+        self.use_mock = use_mock
         self.base_url = config.api.base_url
         self.oc_id = "choishin0"  # OC 파라미터용 ID
-        self.timeout = config.api.timeout
+        self.timeout = timeout or config.api.timeout
         self.max_retries = config.api.max_retries
         self.retry_delay = config.api.retry_delay
         
-        # 세션 설정
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Legal-Data-Pipeline/1.0',
-            'Accept': 'application/json'
-        })
+        if not use_mock:
+            # 세션 설정 (mock 모드가 아닐 때만)
+            self.session = requests.Session()
+            self.session.headers.update({
+                'User-Agent': 'Legal-Data-Pipeline/1.0',
+                'Accept': 'application/json'
+            })
+        else:
+            self.session = None
+            logger.info("Mock 모드로 API 클라이언트 초기화됨")
     
     def _make_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """API 요청 실행"""
+        """API 요청 실행 (Mock 모드 지원)"""
+        if self.use_mock:
+            return self._get_mock_data(endpoint, params)
+        
         url = f"{self.base_url}{endpoint}"
         params['OC'] = self.oc_id  # OC 파라미터에 ID 설정
         params['type'] = 'json'  # JSON 형식으로 요청
@@ -59,13 +67,13 @@ class LegalAPIClient:
                         
                         # 슬랙 알림 전송
                         slack_service.send_error_alert(
-                            title="법제처 API 응답 오류",
-                            message=f"엔드포인트: {endpoint}\n{api_error_msg}",
-                            context={
+                            Exception(api_error_msg),
+                            {
+                                'job_name': 'API Request',
                                 'endpoint': endpoint,
                                 'params': params,
                                 'error_code': data['errCode'],
-                                'error_message': error_msg
+                                'error_details': error_msg
                             }
                         )
                         
@@ -78,13 +86,12 @@ class LegalAPIClient:
                     
                     # 슬랙 알림 전송
                     slack_service.send_error_alert(
-                        title="법제처 API JSON 파싱 실패",
-                        message=f"엔드포인트: {endpoint}\n{error_msg}",
-                        context={
+                        Exception(error_msg),
+                        {
+                            'job_name': 'JSON Parsing',
                             'endpoint': endpoint,
                             'params': params,
-                            'error': str(e),
-                            'response_preview': response.text[:500] if 'response' in locals() else None
+                            'error_details': response.text[:500] if 'response' in locals() else None
                         }
                     )
                     
@@ -95,13 +102,13 @@ class LegalAPIClient:
                     error_msg = f"API 요청 실패: {str(e)}"
                     # 슬랙 알림 전송
                     slack_service.send_error_alert(
-                        title="법제처 API 요청 실패",
-                        message=f"엔드포인트: {endpoint}\n오류: {error_msg}",
-                        context={
+                        Exception(error_msg),
+                        {
+                            'job_name': 'API Request',
                             'endpoint': endpoint,
                             'params': params,
                             'attempt': attempt + 1,
-                            'error': str(e)
+                            'error_details': str(e)
                         }
                     )
                     raise APIError(error_msg)
@@ -111,15 +118,124 @@ class LegalAPIClient:
         error_msg = "최대 재시도 횟수 초과"
         # 슬랙 알림 전송
         slack_service.send_error_alert(
-            title="법제처 API 최대 재시도 초과",
-            message=f"엔드포인트: {endpoint}\n최대 재시도 횟수({self.max_retries})를 초과했습니다.",
-            context={
+            Exception(error_msg),
+            {
+                'job_name': 'API Request Retry',
                 'endpoint': endpoint,
                 'params': params,
-                'max_retries': self.max_retries
+                'max_retries': self.max_retries,
+                'error_details': f'최대 재시도 횟수({self.max_retries})를 초과했습니다.'
             }
         )
         raise APIError(error_msg)
+    
+    def _get_mock_data(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock 데이터 반환"""
+        logger.info(f"Mock 데이터 반환 중: {endpoint}")
+        
+        if endpoint == '/getLawList':
+            return self._get_mock_law_list(params)
+        elif endpoint == '/getLawContent':
+            return self._get_mock_law_content(params)
+        elif endpoint == '/getLawArticles':
+            return self._get_mock_law_articles(params)
+        else:
+            return {'errCode': '0', 'errMsg': 'Success'}
+    
+    def _get_mock_law_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock 법령 목록 데이터"""
+        mock_laws = [
+            {
+                'lawId': 'MOCK001',
+                'lawMasterNo': 'M001',
+                'lawName': '테스트 법령 1',
+                'enforcementDate': '20240101',
+                'lawType': 'law',
+                'promulgationDate': '20231201'
+            },
+            {
+                'lawId': 'MOCK002', 
+                'lawMasterNo': 'M002',
+                'lawName': '테스트 법령 2',
+                'enforcementDate': '20240201',
+                'lawType': 'presidential_decree',
+                'promulgationDate': '20240101'
+            },
+            {
+                'lawId': 'MOCK003',
+                'lawMasterNo': 'M003', 
+                'lawName': '테스트 법령 3',
+                'enforcementDate': '20240301',
+                'lawType': 'ministerial_order',
+                'promulgationDate': '20240201'
+            }
+        ]
+        
+        # limit 파라미터가 있으면 적용
+        limit = params.get('numOfRows')
+        if limit:
+            try:
+                limit_int = int(limit)
+                mock_laws = mock_laws[:limit_int]
+            except (ValueError, TypeError):
+                pass
+        
+        return {
+            'errCode': '0',
+            'errMsg': 'Success',
+            'lawList': mock_laws
+        }
+    
+    def _get_mock_law_content(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock 법령 본문 데이터"""
+        law_id = params.get('lawId', 'MOCK001')
+        
+        mock_content = {
+            'lawId': law_id,
+            'lawMasterNo': f'M{law_id[-3:]}',
+            'lawName': f'테스트 법령 {law_id[-1]}',
+            'lawContent': f'이 법은 {law_id} 테스트를 위한 모의 법령입니다.\n제1조(목적) 이 법은 테스트 목적으로 작성되었습니다.\n제2조(정의) 이 법에서 사용하는 용어의 정의는 다음과 같습니다.',
+            'enforcementDate': '20240101',
+            'lawType': 'law',
+            'promulgationDate': '20231201'
+        }
+        
+        return {
+            'errCode': '0',
+            'errMsg': 'Success',
+            'law': mock_content
+        }
+    
+    def _get_mock_law_articles(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock 법령 조항 데이터"""
+        law_master_no = params.get('lawMasterNo', 'M001')
+        
+        mock_articles = [
+            {
+                'articleNo': '1',
+                'articleTitle': '목적',
+                'articleContent': '이 법은 테스트 목적으로 작성되었습니다.',
+                'parentArticleNo': None
+            },
+            {
+                'articleNo': '2', 
+                'articleTitle': '정의',
+                'articleContent': '이 법에서 사용하는 용어의 정의는 다음과 같습니다.',
+                'parentArticleNo': None
+            },
+            {
+                'articleNo': '2-1',
+                'articleTitle': None,
+                'articleContent': '"테스트"란 시스템의 정상 동작을 확인하는 것을 말합니다.',
+                'parentArticleNo': '2'
+            }
+        ]
+        
+        return {
+            'errCode': '0',
+            'errMsg': 'Success',
+            'articleList': mock_articles
+        }
     
     def collect_law_list(self, last_sync_date: Optional[date] = None) -> List[LawListItem]:
         """현행법령 목록 조회"""
@@ -181,12 +297,11 @@ class LegalAPIClient:
             logger.error("현행법령 목록 수집 실패", error=str(e))
             # 슬랙 알림 전송
             slack_service.send_error_alert(
-                title="현행법령 목록 수집 실패",
-                message=f"마지막 동기화 날짜: {last_sync_date}\n오류: {str(e)}",
-                context={
+                Exception(f"현행법령 목록 수집 실패: {str(e)}"),
+                {
+                    'job_name': 'Law List Collection',
                     'last_sync_date': str(last_sync_date) if last_sync_date else None,
-                    'error': str(e),
-                    'function': 'collect_law_list'
+                    'error_details': str(e)
                 }
             )
             raise
@@ -242,12 +357,11 @@ class LegalAPIClient:
             logger.error("현행법령 본문 수집 실패", law_id=law_id, error=str(e))
             # 슬랙 알림 전송
             slack_service.send_error_alert(
-                title="현행법령 본문 수집 실패",
-                message=f"법령ID: {law_id}\n오류: {str(e)}",
-                context={
+                Exception(f"현행법령 본문 수집 실패: {str(e)}"),
+                {
+                    'job_name': 'Law Content Collection',
                     'law_id': law_id,
-                    'error': str(e),
-                    'function': 'collect_law_content'
+                    'error_details': str(e)
                 }
             )
             raise
@@ -306,12 +420,11 @@ class LegalAPIClient:
                         error=str(e))
             # 슬랙 알림 전송
             slack_service.send_error_alert(
-                title="현행법령 조항 수집 실패",
-                message=f"법령마스터번호: {law_master_no}\n오류: {str(e)}",
-                context={
+                Exception(f"현행법령 조항 수집 실패: {str(e)}"),
+                {
+                    'job_name': 'Law Articles Collection',
                     'law_master_no': law_master_no,
-                    'error': str(e),
-                    'function': 'collect_law_articles'
+                    'error_details': str(e)
                 }
             )
             raise
@@ -344,12 +457,11 @@ class LegalAPIClient:
             logger.error("증분 업데이트 수집 실패", error=str(e))
             # 슬랙 알림 전송
             slack_service.send_error_alert(
-                title="증분 업데이트 수집 실패",
-                message=f"마지막 동기화 날짜: {last_sync_date}\n오류: {str(e)}",
-                context={
+                Exception(f"증분 업데이트 수집 실패: {str(e)}"),
+                {
+                    'job_name': 'Incremental Update Collection',
                     'last_sync_date': str(last_sync_date),
-                    'error': str(e),
-                    'function': 'collect_incremental_updates'
+                    'error_details': str(e)
                 }
             )
             raise
@@ -370,11 +482,10 @@ class LegalAPIClient:
         except Exception as e:
             # 헬스체크 실패 시 슬랙 알림 전송
             slack_service.send_error_alert(
-                title="법제처 API 헬스체크 실패",
-                message=f"API 상태 확인 중 오류가 발생했습니다.\n오류: {str(e)}",
-                context={
-                    'error': str(e),
-                    'function': 'health_check',
+                Exception(f"법제처 API 헬스체크 실패: {str(e)}"),
+                {
+                    'job_name': 'API Health Check',
+                    'error_details': str(e),
                     'response_time_ms': int((time.time() - start_time) * 1000)
                 }
             )
@@ -390,6 +501,24 @@ class LegalAPIClient:
         """세션 종료"""
         if self.session:
             self.session.close()
+    
+    def fetch_legal_documents(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """테스트용 법령 문서 조회 (호환성 메서드)"""
+        if self.use_mock:
+            mock_data = self._get_mock_law_list({'numOfRows': str(limit)})
+            return mock_data.get('lawList', [])
+        else:
+            # 실제 API 호출
+            laws = self.collect_law_list()
+            return [
+                {
+                    'id': law.law_id,
+                    'title': law.law_name,
+                    'content': f'법령 내용: {law.law_name}',
+                    'doc_type': law.law_type or 'law'
+                }
+                for law in laws[:limit]
+            ]
 
 # 전역 API 클라이언트 인스턴스
 api_client = LegalAPIClient()

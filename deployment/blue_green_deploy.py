@@ -26,12 +26,9 @@ import redis
 import requests
 from mysql.connector import Error as MySQLError
 
-# Add src to Python path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from config import get_config
-from database.connection import DatabaseConnectionManager
-from notifications.notification_service import NotificationService
+from src.config import config
+from src.database.connection import DatabaseConnection
+from src.notifications.slack_service import SlackNotificationService, BatchResult
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,8 +40,8 @@ class BlueGreenDeploymentManager:
     """Manages blue-green deployment process"""
     
     def __init__(self, config_path: Optional[str] = None):
-        self.config = get_config(config_path)
-        self.notification_service = NotificationService()
+        self.config = config
+        self.notification_service = SlackNotificationService()
         self.redis_client = self._setup_redis()
         
         # Database configurations
@@ -351,9 +348,8 @@ class BlueGreenDeploymentManager:
         logger.info(f"Current active: {source_env}, Deploying to: {target_env}")
         
         # Send deployment start notification
-        self.notification_service.send_notification(
-            message=f"🚀 Blue-Green deployment started\nTarget: {target_env}\nVersion: {target_version or 'latest'}",
-            level="info"
+        self.notification_service.send_critical_alert(
+            message=f"🚀 Blue-Green deployment started\nTarget: {target_env}\nVersion: {target_version or 'latest'}"
         )
         
         try:
@@ -420,14 +416,16 @@ class BlueGreenDeploymentManager:
             logger.info(f"Active environment: {target_env}")
             logger.info(f"Deployment duration: {deployment_duration:.2f} seconds")
             
-            # Send success notification
-            self.notification_service.send_notification(
-                message=f"✅ Blue-Green deployment completed successfully!\n"
-                       f"New active environment: {target_env}\n"
-                       f"Duration: {deployment_duration:.2f}s\n"
-                       f"Version: {target_version or 'latest'}",
-                level="info"
+            # Send success notification  
+            batch_result = BatchResult(
+                job_name="Blue-Green Deployment",
+                success=True,
+                processed_laws=0,
+                processed_articles=0,
+                error_count=0,
+                duration=f"{deployment_duration:.2f}s"
             )
+            self.notification_service.send_batch_completion_notice(batch_result)
             
             return True
             
@@ -435,12 +433,12 @@ class BlueGreenDeploymentManager:
             logger.error(f"❌ Deployment failed: {e}")
             
             # Send failure notification
-            self.notification_service.send_notification(
-                message=f"❌ Blue-Green deployment failed!\n"
-                       f"Error: {str(e)}\n"
-                       f"Target environment: {target_env}",
-                level="error"
-            )
+            deployment_error = Exception(f"Blue-Green deployment failed: {str(e)}")
+            context = {
+                "target_environment": target_env,
+                "job_name": "Blue-Green Deployment"
+            }
+            self.notification_service.send_error_alert(deployment_error, context)
             
             return False
     
@@ -467,10 +465,8 @@ class BlueGreenDeploymentManager:
             logger.info(f"✅ Rollback completed successfully! Active environment: {previous_env}")
             
             # Send rollback notification
-            self.notification_service.send_notification(
-                message=f"⏪ Rollback completed successfully!\n"
-                       f"Active environment: {previous_env}",
-                level="warning"
+            self.notification_service.send_critical_alert(
+                message=f"⏪ Rollback completed successfully!\nActive environment: {previous_env}"
             )
             
             return True
@@ -478,10 +474,9 @@ class BlueGreenDeploymentManager:
         except Exception as e:
             logger.error(f"❌ Rollback failed: {e}")
             
-            self.notification_service.send_notification(
-                message=f"❌ Rollback failed!\nError: {str(e)}",
-                level="error"
-            )
+            rollback_error = Exception(f"Rollback failed: {str(e)}")
+            context = {"job_name": "Blue-Green Rollback"}
+            self.notification_service.send_error_alert(rollback_error, context)
             
             return False
     

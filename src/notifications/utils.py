@@ -1,12 +1,15 @@
-"""알림 서비스 유틸리티 함수들"""
+"""슬랙 알림 서비스 유틸리티 함수들"""
 from typing import Dict, Any, Optional
 from datetime import datetime
 import traceback
 
-from .notification_service import notification_service
+from .slack_service import SlackNotificationService, BatchResult
 from ..logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# 전역 슬랙 서비스 인스턴스
+_slack_service = SlackNotificationService()
 
 def notify_error(error: Exception, job_name: str = "Unknown", 
                 error_details: Optional[str] = None, **kwargs) -> bool:
@@ -29,7 +32,7 @@ def notify_error(error: Exception, job_name: str = "Unknown",
         **kwargs
     }
     
-    return notification_service.send_error_alert(error, context)
+    return _slack_service.send_error_alert(error, context)
 
 def notify_batch_failure(job_name: str, error_message: str, 
                         error_details: Optional[str] = None) -> bool:
@@ -44,11 +47,16 @@ def notify_batch_failure(job_name: str, error_message: str,
     Returns:
         bool: 알림 발송 성공 여부
     """
-    return notification_service.send_batch_failure_alert(
+    result = BatchResult(
         job_name=job_name,
-        error_message=error_message,
-        error_details=error_details
+        success=False,
+        processed_laws=0,
+        processed_articles=0,
+        error_count=1,
+        error_message=error_message
     )
+    
+    return _slack_service.send_batch_completion_notice(result)
 
 def notify_batch_success(job_name: str, processed_laws: int, 
                         processed_articles: int, duration: str) -> bool:
@@ -64,12 +72,16 @@ def notify_batch_success(job_name: str, processed_laws: int,
     Returns:
         bool: 알림 발송 성공 여부
     """
-    return notification_service.send_batch_success_notice(
+    result = BatchResult(
         job_name=job_name,
+        success=True,
         processed_laws=processed_laws,
         processed_articles=processed_articles,
+        error_count=0,
         duration=duration
     )
+    
+    return _slack_service.send_batch_completion_notice(result)
 
 def notify_critical(message: str, **kwargs) -> bool:
     """
@@ -87,11 +99,11 @@ def notify_critical(message: str, **kwargs) -> bool:
         **kwargs
     }
     
-    return notification_service.send_critical_alert(message, context)
+    return _slack_service.send_critical_alert(message, context)
 
 def notify_api_error(api_name: str, error_message: str, retry_count: int = 0) -> bool:
     """
-    API 오류 알림
+    API 오류 알림 (error_alert 템플릿 사용)
     
     Args:
         api_name: API 이름
@@ -101,16 +113,18 @@ def notify_api_error(api_name: str, error_message: str, retry_count: int = 0) ->
     Returns:
         bool: 알림 발송 성공 여부
     """
-    return notification_service.send_api_connection_error(
-        api_name=api_name,
-        error_message=error_message,
-        retry_count=retry_count
-    )
+    context = {
+        "job_name": f"API-{api_name}",
+        "retry_count": retry_count,
+        "api_name": api_name
+    }
+    error = Exception(f"API 오류 - {api_name}: {error_message}")
+    return _slack_service.send_error_alert(error, context)
 
 def notify_database_error(operation: str, error_message: str, 
                          table_name: Optional[str] = None) -> bool:
     """
-    데이터베이스 오류 알림
+    데이터베이스 오류 알림 (error_alert 템플릿 사용)
     
     Args:
         operation: 수행 중이던 작업
@@ -120,16 +134,18 @@ def notify_database_error(operation: str, error_message: str,
     Returns:
         bool: 알림 발송 성공 여부
     """
-    return notification_service.send_database_error(
-        operation=operation,
-        error_message=error_message,
-        table_name=table_name
-    )
+    context = {
+        "job_name": f"DB-{operation}",
+        "operation": operation,
+        "table_name": table_name
+    }
+    error = Exception(f"데이터베이스 오류 - {operation}: {error_message}")
+    return _slack_service.send_error_alert(error, context)
 
 def notify_validation_error(data_type: str, validation_error: str, 
                            affected_records: int = 0) -> bool:
     """
-    데이터 검증 오류 알림
+    데이터 검증 오류 알림 (api_health_warning 템플릿 사용 - 경고 수준)
     
     Args:
         data_type: 데이터 유형
@@ -139,15 +155,16 @@ def notify_validation_error(data_type: str, validation_error: str,
     Returns:
         bool: 알림 발송 성공 여부
     """
-    return notification_service.send_data_validation_error(
-        data_type=data_type,
-        validation_error=validation_error,
-        affected_records=affected_records
+    return _slack_service.send_api_health_warning(
+        api_name=f"Data-{data_type}",
+        status="Validation Failed",
+        response_time=0,
+        error_message=f"{validation_error} (영향받은 레코드: {affected_records}개)" if affected_records > 0 else validation_error
     )
 
 def notify_system_error(system_component: str, error_message: str) -> bool:
     """
-    시스템 오류 알림 (긴급)
+    시스템 오류 알림 (critical_alert 템플릿 사용)
     
     Args:
         system_component: 시스템 컴포넌트명
@@ -156,10 +173,9 @@ def notify_system_error(system_component: str, error_message: str) -> bool:
     Returns:
         bool: 알림 발송 성공 여부
     """
-    return notification_service.send_system_error(
-        system_component=system_component,
-        error_message=error_message
-    )
+    message = f"시스템 컴포넌트 '{system_component}'에서 오류 발생: {error_message}"
+    context = {"system_component": system_component}
+    return _slack_service.send_critical_alert(message, context)
 
 # 데코레이터 함수들
 def with_error_notification(job_name: str = "Unknown"):

@@ -4,7 +4,7 @@ slack:
   webhook_url: ${SLACK_WEBHOOK_URL}
   
   # 알림 설정
-  enable_notifications: true
+  enable_notifications: false
   retry_attempts: 3
   retry_delay: 5
   timeout: 30

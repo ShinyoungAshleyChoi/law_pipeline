@@ -4,12 +4,10 @@
 from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Optional
 import uuid
-import json
 
 from airflow.models import BaseOperator
 from airflow.utils.context import Context
 from airflow.exceptions import AirflowException, AirflowSkipException
-from airflow.utils.decorators import apply_defaults
 
 import sys
 import os
@@ -32,7 +30,6 @@ class LegalAPIHealthCheckOperator(BaseOperator):
     ui_color = '#4CAF50'
     ui_fgcolor = '#FFFFFF'
     
-    @apply_defaults
     def __init__(
         self,
         max_response_time: int = 10000,  # 최대 응답 시간 (ms)
@@ -97,7 +94,6 @@ class LegalDataCollectionOperator(BaseOperator):
     ui_color = '#2196F3'
     ui_fgcolor = '#FFFFFF'
     
-    @apply_defaults
     def __init__(
         self,
         collection_type: str = 'incremental',  # 'incremental' or 'full' or 'target_date'
@@ -134,7 +130,7 @@ class LegalDataCollectionOperator(BaseOperator):
     
     def _generate_job_id(self, context: Context) -> str:
         """작업 ID 생성"""
-        execution_date = context['execution_date']
+        execution_date = context['logical_date']
         job_id = f"legal_collection_{execution_date.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         
         # XCom에 저장
@@ -151,17 +147,20 @@ class LegalDataCollectionOperator(BaseOperator):
             'total_laws_found': 0,
             'new_laws': 0,
             'updated_laws': 0,
-            'error_count': 0
+            'new_articles': 0,
+            'updated_articles': 0,
+            'error_count': 0,
+            'processing_time_seconds': 0.0,
         }]
         
         # 결과 집계
         total_stats = {
-            'total_new_laws': sum(s.new_laws for s in all_stats),
-            'total_updated_laws': sum(s.updated_laws for s in all_stats),
-            'total_new_articles': sum(s.new_articles for s in all_stats),
-            'total_updated_articles': sum(s.updated_articles for s in all_stats),
-            'total_errors': sum(s.error_count for s in all_stats),
-            'total_processing_time': sum(s.processing_time_seconds for s in all_stats),
+            'total_new_laws': sum(s["new_laws"] for s in all_stats),
+            'total_updated_laws': sum(s["updated_laws"] for s in all_stats),
+            'total_new_articles': sum(s["new_articles"] for s in all_stats),
+            'total_updated_articles': sum(s["updated_articles"] for s in all_stats),
+            'total_errors': sum(s["error_count"] for s in all_stats),
+            'total_processing_time': sum(s["processing_time_seconds"] for s in all_stats),
             'processed_dates': len(all_stats)
         }
         
@@ -172,14 +171,14 @@ class LegalDataCollectionOperator(BaseOperator):
             'stats': total_stats,
             'daily_stats': [
                 {
-                    'target_date': stats.target_date.isoformat(),
-                    'total_laws_found': stats.total_laws_found,
-                    'new_laws': stats.new_laws,
-                    'updated_laws': stats.updated_laws,
-                    'new_articles': stats.new_articles,
-                    'updated_articles': stats.updated_articles,
-                    'error_count': stats.error_count,
-                    'processing_time_seconds': stats.processing_time_seconds
+                    'target_date': stats["target_date"].isoformat(),
+                    'total_laws_found': stats["total_laws_found"],
+                    'new_laws': stats["new_laws"],
+                    'updated_laws': stats["updated_laws"],
+                    'new_articles': stats["new_articles"],
+                    'updated_articles': stats["updated_articles"],
+                    'error_count': stats["error_count"],
+                    'processing_time_seconds': stats["processing_time_seconds"]
                 }
                 for stats in all_stats
             ],
@@ -212,15 +211,15 @@ class LegalDataCollectionOperator(BaseOperator):
             'job_id': job_id,
             'collection_type': 'target_date',
             'target_date': target_date_obj.isoformat(),
-            'success': daily_stats.error_count == 0,
+            'success': daily_stats["error_count"] == 0,
             'stats': {
-                'total_laws_found': daily_stats.total_laws_found,
-                'new_laws': daily_stats.new_laws,
-                'updated_laws': daily_stats.updated_laws,
-                'new_articles': daily_stats.new_articles,
-                'updated_articles': daily_stats.updated_articles,
-                'error_count': daily_stats.error_count,
-                'processing_time_seconds': daily_stats.processing_time_seconds
+                'total_laws_found': daily_stats["total_laws_found"],
+                'new_laws': daily_stats["new_laws"],
+                'updated_laws': daily_stats["updated_laws"],
+                'new_articles': daily_stats["new_articles"],
+                'updated_articles': daily_stats["updated_articles"],
+                'error_count': daily_stats["error_count"],
+                'processing_time_seconds': daily_stats["processing_time_seconds"]
             },
             'completion_time': datetime.now().isoformat()
         }
@@ -242,7 +241,6 @@ class LegalDataValidationOperator(BaseOperator):
     ui_color = '#FF9800'
     ui_fgcolor = '#FFFFFF'
     
-    @apply_defaults
     def __init__(
         self,
         validation_rules: Optional[Dict[str, Any]] = None,
@@ -393,7 +391,6 @@ class LegalDataNotificationOperator(BaseOperator):
     ui_color = '#9C27B0'
     ui_fgcolor = '#FFFFFF'
     
-    @apply_defaults
     def __init__(
         self,
         notification_type: str = 'completion',  # 'completion', 'error', 'warning'
@@ -483,7 +480,7 @@ class LegalDataNotificationOperator(BaseOperator):
         
         # 기본 메시지 생성
         job_id = task_results.get('generate_job_id', 'unknown')
-        execution_date = context.get('execution_date', datetime.now())
+        execution_date = context.get('logical_date', datetime.now())
         
         if self.notification_type == 'completion':
             return self._generate_completion_message(job_id, task_results, execution_date)
@@ -618,7 +615,6 @@ class LegalDataCleanupOperator(BaseOperator):
     ui_color = '#607D8B'
     ui_fgcolor = '#FFFFFF'
     
-    @apply_defaults
     def __init__(
         self,
         cleanup_days: int = 7,           # 정리할 파일 나이 (일)
@@ -679,8 +675,7 @@ class LegalDataCleanupOperator(BaseOperator):
         """임시 파일 정리"""
         import os
         import glob
-        from pathlib import Path
-        
+
         logger.info("임시 파일 정리 시작")
         
         temp_patterns = [

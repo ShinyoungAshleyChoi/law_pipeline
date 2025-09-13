@@ -7,9 +7,6 @@ import argparse
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 
-# 프로젝트 루트를 Python 경로에 추가
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from src.database.repository import LegalDataRepository
 from src.database.models import JobType, JobStatus, LawList, LawContent, LawArticle
 from src.logging_config import get_logger

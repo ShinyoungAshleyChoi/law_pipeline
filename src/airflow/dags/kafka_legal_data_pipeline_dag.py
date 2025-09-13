@@ -4,29 +4,15 @@ Kafka 기반 법제처 API 데이터 파이프라인 Airflow DAG
 """
 from datetime import datetime, timedelta, date
 from typing import Dict, Any
-import uuid
-import json
 import asyncio
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.utils.dates import days_ago
-from airflow.utils.task_group import TaskGroup
-from airflow.models import Variable
-from airflow.exceptions import AirflowException, AirflowSkipException
-from airflow.utils.email import send_email
-
-# 프로젝트 모듈 임포트
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
+from airflow.sdk import DAG, Param
+from airflow.providers.standard.operators.python import PythonOperator
 
 from src.api.kafka_client import kafka_integrated_client
 from src.database.repository import LegalDataRepository
 from src.notifications.slack_service import slack_service
 from src.logging_config import get_logger
-from src.kafka.models import EventType
 
 logger = get_logger(__name__)
 
@@ -50,10 +36,10 @@ dag = DAG(
     'kafka_legal_data_pipeline',
     default_args=DEFAULT_ARGS,
     description='Kafka 기반 법제처 API 데이터 파이프라인 - 무중단 서비스',
-    schedule_interval='0 2 * * *',  # 매일 새벽 2시 실행
+    schedule='0 2 * * *',  # 매일 새벽 2시 실행
     catchup=False,
     max_active_runs=1,
-    tags=['legal', 'kafka', 'pipeline', 'zero-downtime'],
+    tags={'legal', 'kafka', 'pipeline', 'zero-downtime'},
     doc_md="""
     # Kafka 기반 법제처 API 데이터 파이프라인
     
@@ -71,12 +57,13 @@ dag = DAG(
     2. **Consumer**: Kafka Topics → MySQL Database
     3. **Monitoring**: 처리 상태 및 통계 추적
     """,
+
     params={
-        'force_full_sync': False,
-        'target_date': None,
-        'batch_size': 100,
-        'notification_enabled': True,
-        'kafka_enabled': True
+        'force_full_sync': Param(False, type="boolean", description="전체 동기화 강제 실행"),
+        'target_date': Param(None, type=["string", "null"], description="대상 날짜"),
+        'batch_size': Param(100, type="integer", minimum=1, maximum=1000),
+        'notification_enabled': Param(True, type="boolean"),
+        'kafka_enabled': Param(True, type="boolean")
     }
 )
 

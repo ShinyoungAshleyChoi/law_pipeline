@@ -11,11 +11,10 @@ else:
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
-from typing import Optional, Generator, TYPE_CHECKING, Any
-import structlog
+from typing import Optional, Generator, Any
 
-from ..config import config
-from ..logging_config import get_logger
+from src.config import config
+from src.logging_config import get_logger
 
 logger = get_logger(__name__)
 

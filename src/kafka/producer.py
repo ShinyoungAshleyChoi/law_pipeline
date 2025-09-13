@@ -10,14 +10,14 @@ from kafka import KafkaProducer
 from kafka.errors import KafkaError, KafkaTimeoutError
 import structlog
 
-from .config import kafka_config, Topics
-from .models import (
+from src.kafka.config import kafka_config, Topics
+from src.kafka.models import (
     KafkaMessage, LawEvent, ContentEvent, ArticleEvent, 
     BatchStatusEvent, NotificationEvent, EventType
 )
-from ..api.client import api_client
-from ..api.models import LawListItem, LawContent, LawArticle
-from ..logging_config import get_logger
+from src.api.client import api_client
+from src.api.models import LawListItem, LawContent, LawArticle
+from src.logging_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -33,8 +33,8 @@ async def test_producer_basic():
         
         # 테스트 법령 데이터
         test_law = LawListItem(
-            law_id=99999,
-            law_master_no=99999,
+            law_id='99999',
+            law_master_no='99999',
             law_name="테스트 법령",
             enforcement_date=date.today(),
             promulgation_date=date.today() - timedelta(days=30),

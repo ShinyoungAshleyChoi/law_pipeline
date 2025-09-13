@@ -34,6 +34,9 @@ class APIConfig:
     batch_size: int = 100
     use_mock_data: bool = False
     mock_data_path: Optional[str] = None
+    mock_api_delay: bool = True
+    mock_api_error_rate: float = 0.02
+    mock_data_count: int = 50
 
 @dataclass
 class LoggingConfig:
@@ -50,7 +53,7 @@ class SlackConfig:
     bot_token: Optional[str]
     channel_id: Optional[str]
     webhook_url: Optional[str]
-    enable_notifications: bool = True
+    enable_notifications: bool = False
     retry_attempts: int = 3
     retry_delay: int = 5
     timeout: int = 30
@@ -153,29 +156,20 @@ class ConfigManager:
     
     @property
     def slack(self) -> SlackConfig:
-        """슬랙 알림 설정 반환"""
+        """슬랙 알림 설정 반환 - config/notification.yaml에서만 로드"""
         if self._slack_config is None:
-            try:
-                config_data = self._load_yaml_config("notification.yaml")
-                slack_config = config_data["slack"]
-                
-                self._slack_config = SlackConfig(
-                    bot_token=slack_config.get("bot_token"),
-                    channel_id=slack_config.get("channel_id"),
-                    webhook_url=slack_config.get("webhook_url"),
-                    enable_notifications=slack_config.get("enable_notifications", True),
-                    retry_attempts=slack_config.get("retry_attempts", 3),
-                    retry_delay=slack_config.get("retry_delay", 5),
-                    timeout=slack_config.get("timeout", 30)
-                )
-            except FileNotFoundError:
-                # 설정 파일이 없으면 환경 변수에서 직접 로드
-                self._slack_config = SlackConfig(
-                    bot_token=os.getenv("SLACK_BOT_TOKEN"),
-                    channel_id=os.getenv("SLACK_CHANNEL_ID"),
-                    webhook_url=os.getenv("SLACK_WEBHOOK_URL"),
-                    enable_notifications=os.getenv("SLACK_ENABLE_NOTIFICATIONS", "true").lower() == "true"
-                )
+            config_data = self._load_yaml_config("notification.yaml")
+            slack_config = config_data["slack"]
+            
+            self._slack_config = SlackConfig(
+                bot_token=slack_config.get("bot_token"),
+                channel_id=slack_config.get("channel_id"),
+                webhook_url=slack_config.get("webhook_url"),
+                enable_notifications=slack_config.get("enable_notifications", False),
+                retry_attempts=slack_config.get("retry_attempts", 3),
+                retry_delay=slack_config.get("retry_delay", 5),
+                timeout=slack_config.get("timeout", 30)
+            )
         
         return self._slack_config
     

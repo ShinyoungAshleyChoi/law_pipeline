@@ -11,17 +11,17 @@ from kafka import KafkaConsumer
 from kafka.errors import KafkaError, CommitFailedError
 import structlog
 
-from .config import kafka_config, Topics
-from .models import (
+from src.kafka.config import kafka_config, Topics
+from src.kafka.models import (
     KafkaMessage, LawEvent, ContentEvent, ArticleEvent,
     BatchStatusEvent, NotificationEvent, EventType, MessageStatus
 )
-from ..database.repository import LegalDataRepository
-from ..database.models import (
+from src.database.repository import LegalDataRepository
+from src.database.models import (
     LawList, LawContent, LawArticle, JobType, JobStatus
 )
-from ..notifications.slack_service import slack_service
-from ..logging_config import get_logger
+from src.notifications.slack_service import slack_service
+from src.logging_config import get_logger
 
 logger = get_logger(__name__)
 
