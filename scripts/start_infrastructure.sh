@@ -242,8 +242,29 @@ start_containers() {
     log_info "MySQL Green 시작 완료"
     
     # 나머지 서비스 시작
-    log_info "5. 나머지 서비스 시작..."
-    docker-compose up -d redis kafka-ui prometheus grafana
+    log_info "5. 나머지 서비스 시작 (Airflow 포함)..."
+    docker-compose up -d redis kafka-ui prometheus grafana postgres airflow-webserver airflow-scheduler airflow-worker airflow-flower
+    
+    # Airflow 웹서버 준비 대기
+    log_info "Airflow 웹서버 준비 대기 중..."
+    timeout=120
+    counter=0
+    while ! curl -s -f http://localhost:8090/health >/dev/null 2>&1; do
+        sleep 5
+        counter=$((counter + 5))
+        if [ $counter -ge $timeout ]; then
+            log_warn "Airflow 웹서버 준비 대기 시간 초과"
+            break
+        fi
+        echo -n "."
+    done
+    echo ""
+    
+    if curl -s -f http://localhost:8090/health >/dev/null 2>&1; then
+        log_info "Airflow 웹서버 시작 완료"
+    else
+        log_warn "Airflow 웹서버 상태 확인 실패 - 수동으로 확인이 필요합니다"
+    fi
     
     log_info "모든 컨테이너 시작 완료"
 }
@@ -267,10 +288,12 @@ setup_kafka_topics() {
     fi
 }
 
+
+
 # 서비스 상태 확인
 check_services() {
     log_info "서비스 상태 확인 중..."
-    
+
     services=(
         "zookeeper:2181"
         "kafka1:9092"
@@ -284,12 +307,12 @@ check_services() {
         "prometheus:9090"
         "grafana:3000"
     )
-    
+
     for service in "${services[@]}"; do
         IFS=':' read -ra ADDR <<< "$service"
         host=${ADDR[0]}
         port=${ADDR[1]}
-        
+
         if timeout 5 bash -c "</dev/tcp/localhost/$port" 2>/dev/null; then
             log_info "✅ $host ($port) - 정상"
         else
@@ -308,11 +331,14 @@ print_access_info() {
     echo "   📊 Grafana:         http://localhost:3000 (admin/legal_grafana_2024!)"
     echo "   📈 Prometheus:      http://localhost:9090"
     echo "   🔄 Schema Registry: http://localhost:8081"
+    echo "   ✈️ Airflow:         http://localhost:8090 (airflow/airflow_admin_2024!)"
+    echo "   🌸 Flower (Celery): http://localhost:5555"
     echo ""
     echo "🔌 데이터베이스 연결 정보:"
     echo "   💙 MySQL Blue:      localhost:3306 (legal_user/legal_pass_2024!)"
-    echo "   💚 MySQL Green:     localhost:3307 (legal_user/legal_pass_2024!)"
+    echo "   💚 MySQL Green:     localhost:3307 (legal_user/legal_pass_2024!) [ACTIVE]"
     echo "   🔴 Redis:           localhost:6379 (legal_redis_2024!)"
+    echo "   🐘 PostgreSQL:      localhost:5432 (airflow/airflow_pass_2024!)"
     echo ""
     echo "📡 Kafka 브로커:"
     echo "   🟢 Kafka1:         localhost:9092"
@@ -324,6 +350,8 @@ print_access_info() {
     echo "   • 상태 확인:       docker-compose ps"
     echo "   • 토픽 목록:       uv run python scripts/setup_kafka_topics.py --action list"
     echo "   • 서비스 중지:     docker-compose down"
+    echo "   • Airflow DAG 실행: uv run python scripts/run_airflow_dag.py incremental"
+    echo "   • 배치 작업 실행:  uv run python scripts/batch_monitor.py run full_load"
     echo ""
 }
 

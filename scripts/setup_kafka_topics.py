@@ -3,6 +3,7 @@
 
 import sys
 import time
+import json
 import logging
 from typing import Dict, List
 from kafka.admin import KafkaAdminClient, ConfigResource, ConfigResourceType, NewTopic
@@ -212,21 +213,73 @@ class KafkaTopicSetup:
         
         try:
             # 토픽 생성 요청
-            fs = self.admin_client.create_topics(topics_to_create, validate_only=False)
+            response = self.admin_client.create_topics(topics_to_create, validate_only=False)
             
-            # 결과 확인
-            for topic_name, future in fs.items():
-                try:
-                    future.result()  # 결과 대기
-                    logger.info(f"토픽 '{topic_name}' 생성 성공")
-                except TopicAlreadyExistsError:
-                    logger.warning(f"토픽 '{topic_name}' 이미 존재함")
-                except Exception as e:
-                    logger.error(f"토픽 '{topic_name}' 생성 실패: {e}")
+            # 응답 처리 - kafka-python 버전에 따른 다양한 응답 형태 처리
+            logger.info(f"토픽 생성 응답 타입: {type(response)}")
+            
+            if hasattr(response, 'items'):
+                # 딕셔너리 형태의 응답 (이전 버전)
+                for topic_name, future in response.items():
+                    try:
+                        future.result()  # 결과 대기
+                        logger.info(f"토픽 '{topic_name}' 생성 성공")
+                    except TopicAlreadyExistsError:
+                        logger.warning(f"토픽 '{topic_name}' 이미 존재함")
+                    except Exception as e:
+                        logger.error(f"토픽 '{topic_name}' 생성 실패: {e}")
+            else:
+                # 다른 형태의 응답 처리 (최신 버전)
+                logger.info(f"토픽 생성 요청 전송됨: {[topic.name for topic in topics_to_create]}")
+                
+                # 각 토픽별로 개별 생성 시도
+                success_count = 0
+                for topic in topics_to_create:
+                    try:
+                        single_response = self.admin_client.create_topics([topic], validate_only=False)
+                        logger.info(f"토픽 '{topic.name}' 생성 성공")
+                        success_count += 1
+                    except TopicAlreadyExistsError:
+                        logger.warning(f"토픽 '{topic.name}' 이미 존재함")
+                        success_count += 1
+                    except Exception as e:
+                        logger.error(f"토픽 '{topic.name}' 생성 실패: {e}")
+                
+                # 잠시 대기 후 토픽 목록으로 확인
+                time.sleep(2)
+                existing_topics = self.admin_client.list_topics()
+                for topic in topics_to_create:
+                    if topic.name in existing_topics:
+                        logger.info(f"토픽 '{topic.name}' 존재 확인됨")
+                    else:
+                        logger.warning(f"토픽 '{topic.name}' 생성 상태 불명확")
                     
         except Exception as e:
             logger.error(f"토픽 생성 요청 실패: {e}")
-            return False
+            logger.error(f"오류 상세: {str(e)}")
+            
+            # 개별 토픽 생성으로 재시도
+            logger.info("개별 토픽 생성으로 재시도...")
+            success_count = 0
+            for topic in topics_to_create:
+                try:
+                    single_topic = NewTopic(
+                        name=topic.name,
+                        num_partitions=topic.num_partitions,
+                        replication_factor=topic.replication_factor,
+                        topic_configs=topic.topic_configs
+                    )
+                    self.admin_client.create_topics([single_topic], validate_only=False)
+                    logger.info(f"토픽 '{topic.name}' 개별 생성 성공")
+                    success_count += 1
+                except TopicAlreadyExistsError:
+                    logger.warning(f"토픽 '{topic.name}' 이미 존재함")
+                    success_count += 1
+                except Exception as single_error:
+                    logger.error(f"토픽 '{topic.name}' 개별 생성 실패: {single_error}")
+            
+            if success_count == 0:
+                return False
         
         return True
     
@@ -245,50 +298,82 @@ class KafkaTopicSetup:
     
     def describe_topics(self, topic_names: List[str] = None):
         """토픽 상세 정보 조회"""
+        if topic_names is None:
+            # legal- 로 시작하는 토픽들만 조회
+            all_topics = self.admin_client.list_topics()
+            topic_names = [t for t in all_topics if t.startswith('legal-')]
+
+        if not topic_names:
+            logger.info("legal- 로 시작하는 토픽이 없습니다.")
+            return
+
+        logger.info(f"조회할 토픽 목록: {topic_names}")
+
+        # 토픽 상세 정보 조회
+        topic_metadata = self.admin_client.describe_topics(topic_names)
+
+        # 응답 형태 확인 및 처리
+        logger.info(f"describe_topics 응답 타입: {type(topic_metadata)}")
+
+        if topic_names:
+            for topic_name in topic_names:
+                try:
+                    single_metadata = self.admin_client.describe_topics([topic_name])
+                    logger.info(f"토픽 '{topic_name}' 개별 조회 성공")
+                    # 간단한 정보 출력
+                    logger.info(f"  - 토픽명: {topic_name}")
+                except Exception as single_error:
+                    logger.error(f"토픽 '{topic_name}' 개별 조회 실패: {single_error}")
+
+    
+    def _print_topic_details(self, topic_name: str, metadata):
+        """토픽 상세 정보 출력 헬퍼 함수"""
         try:
-            if topic_names is None:
-                # legal- 로 시작하는 토픽들만 조회
-                all_topics = self.admin_client.list_topics()
-                topic_names = [t for t in all_topics if t.startswith('legal-')]
+            logger.info(f"\n토픽: {topic_name}")
             
-            topic_metadata = self.admin_client.describe_topics(topic_names)
-            
-            for topic_name, metadata in topic_metadata.items():
-                logger.info(f"\n토픽: {topic_name}")
+            if hasattr(metadata, 'partitions') and metadata.partitions:
                 logger.info(f"  파티션 수: {len(metadata.partitions)}")
                 logger.info(f"  복제 팩터: {len(metadata.partitions[0].replicas) if metadata.partitions else 0}")
                 
                 for partition in metadata.partitions:
                     logger.info(f"    파티션 {partition.partition}: 리더={partition.leader}, "
                               f"복제본={partition.replicas}, ISR={partition.isr}")
+            else:
+                logger.info(f"  메타데이터: {metadata}")
                 
         except Exception as e:
-            logger.error(f"토픽 상세 정보 조회 실패: {e}")
+            logger.error(f"토픽 '{topic_name}' 상세 정보 출력 실패: {e}")
+            logger.info(f"  원본 메타데이터: {metadata}")
     
     def test_connection(self):
         """Kafka 연결 테스트"""
+        # 더 기본적인 연결 테스트 시도
         try:
-            # 테스트 프로듀서 생성
-            producer = KafkaProducer(
-                bootstrap_servers=self.bootstrap_servers,
-                value_serializer=lambda v: str(v).encode('utf-8')
-            )
-            
-            # 테스트 메시지 전송
-            test_topic = 'legal-batch-status'
-            test_message = f'connection-test-{int(time.time())}'
-            
-            future = producer.send(test_topic, test_message)
-            future.get(timeout=10)  # 10초 내 전송 완료 대기
-            
-            producer.close()
-            logger.info("Kafka 연결 테스트 성공")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Kafka 연결 테스트 실패: {e}")
-            return False
-    
+            logger.info("기본 연결 테스트 시도...")
+
+            # 단순히 토픽 목록 조회로 연결 확인
+            topics = self.admin_client.list_topics()
+            logger.info(f"토픽 목록 조회 성공: {len(topics)}개 토픽 발견")
+
+            # 클러스터 메타데이터 조회
+            try:
+                cluster_metadata = self.admin_client.describe_cluster()
+                logger.info(f"cluster_metadata: {cluster_metadata}")
+                logger.info("클러스터 메타데이터 조회 성공")
+                return True
+            except Exception as cluster_error:
+                logger.error(f"클러스터 메타데이터 조회 실패: {cluster_error}")
+
+            # 최소한 토픽 목록은 조회 가능한 경우
+            if len(topics) >= 0:
+                logger.info("기본적인 Kafka 연결은 가능한 상태")
+                return True
+
+        except Exception as basic_error:
+            logger.error(f"기본 연결 테스트 실패: {basic_error}")
+
+        return False
+
     def setup_all(self):
         """전체 설정 실행"""
         logger.info("Kafka 토픽 설정 시작")

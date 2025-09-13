@@ -14,6 +14,11 @@ from src.database.repository import LegalDataRepository
 from src.database.models import BatchJob, JobStatus, JobType
 from src.logging_config import get_logger
 
+# 다른 스크립트의 클래스 임포트
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from full_data_load import FullDataLoader
+from incremental_update import IncrementalUpdater
+
 logger = get_logger(__name__)
 
 @dataclass
