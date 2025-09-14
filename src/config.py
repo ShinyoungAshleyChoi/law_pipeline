@@ -170,7 +170,7 @@ class ConfigManager:
     def database(self) -> DatabaseConfig:
         """데이터베이스 설정 반환"""
         if self._database_config is None:
-            config = self._load_yaml_config("database.yaml")
+            config = self._load_yaml_config("database_green.yaml")
             db_config = config["database"]
             
             self._database_config = DatabaseConfig(

@@ -223,34 +223,20 @@ services:
       MYSQL_DATABASE: legal_db
       MYSQL_USER: legal_user
       MYSQL_PASSWORD: legal_pass_2024!
-      # 성능 최적화
-      MYSQL_INNODB_BUFFER_POOL_SIZE: 1G
-      MYSQL_INNODB_LOG_FILE_SIZE: 256M
-      MYSQL_INNODB_FLUSH_LOG_AT_TRX_COMMIT: 2
-      MYSQL_INNODB_FLUSH_METHOD: O_DIRECT
-      MYSQL_MAX_CONNECTIONS: 200
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
       --default-authentication-plugin=mysql_native_password
       --innodb-buffer-pool-size=1G
-      --innodb-log-file-size=256M
-      --innodb-flush-log-at-trx-commit=2
-      --innodb-flush-method=O_DIRECT
       --max-connections=200
-      --slow-query-log=1
-      --slow-query-log-file=/var/log/mysql/slow.log
-      --long-query-time=2
-      --log-error=/var/log/mysql/error.log
-      --general-log=0
+      --skip-log-bin
     volumes:
-      - mysql_blue_data:/var/lib/mysql
-      - mysql_blue_logs:/var/log/mysql
+      - mysql_blue_data_v2:/var/lib/mysql
       - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./docker/mysql/init-blue.sql:/docker-entrypoint-initdb.d/02-init-blue.sql:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "legal_user", "-plegal_pass_2024!"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -268,34 +254,20 @@ services:
       MYSQL_DATABASE: legal_db
       MYSQL_USER: legal_user
       MYSQL_PASSWORD: legal_pass_2024!
-      # 성능 최적화 (Blue와 동일)
-      MYSQL_INNODB_BUFFER_POOL_SIZE: 1G
-      MYSQL_INNODB_LOG_FILE_SIZE: 256M
-      MYSQL_INNODB_FLUSH_LOG_AT_TRX_COMMIT: 2
-      MYSQL_INNODB_FLUSH_METHOD: O_DIRECT
-      MYSQL_MAX_CONNECTIONS: 200
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
       --default-authentication-plugin=mysql_native_password
       --innodb-buffer-pool-size=1G
-      --innodb-log-file-size=256M
-      --innodb-flush-log-at-trx-commit=2
-      --innodb-flush-method=O_DIRECT
       --max-connections=200
-      --slow-query-log=1
-      --slow-query-log-file=/var/log/mysql/slow.log
-      --long-query-time=2
-      --log-error=/var/log/mysql/error.log
-      --general-log=0
+      --skip-log-bin
     volumes:
-      - mysql_green_data:/var/lib/mysql
-      - mysql_green_logs:/var/log/mysql
+      - mysql_green_data_v2:/var/lib/mysql
       - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./docker/mysql/init-green.sql:/docker-entrypoint-initdb.d/02-init-green.sql:ro
+      - ./docker/mysql/init-blue.sql:/docker-entrypoint-initdb.d/02-init-blue.sql:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "legal_user", "-plegal_pass_2024!"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -550,14 +522,10 @@ volumes:
     name: kafka3_data
   
   # MySQL Blue-Green
-  mysql_blue_data:
-    name: mysql_blue_data
-  mysql_blue_logs:
-    name: mysql_blue_logs
-  mysql_green_data:
-    name: mysql_green_data
-  mysql_green_logs:
-    name: mysql_green_logs
+  mysql_blue_data_v2:
+    name: mysql_blue_data_v2
+  mysql_green_data_v2:
+    name: mysql_green_data_v2
   
   # Redis
   redis_data:

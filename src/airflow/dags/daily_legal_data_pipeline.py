@@ -9,10 +9,7 @@ import sys
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-
-# 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
+from typing import Dict, List, Any
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -26,6 +23,130 @@ from api.models import LawListItem
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def optimize_message_size(data: Dict[str, Any], max_content_length: int = 5000) -> Dict[str, Any]:
+    """메시지 크기 최적화 - Kafka 전송 안정성 향상"""
+    optimized = data.copy()
+    
+    # 1. 긴 콘텐츠 잘라내기
+    if 'content' in optimized and optimized['content']:
+        content = optimized['content']
+        if len(content) > max_content_length:
+            # 문장 단위로 자르기 (자연스러운 단락 끝에서)
+            sentences = content.split('. ')
+            truncated_content = ""
+            for sentence in sentences:
+                if len(truncated_content + sentence + '. ') <= max_content_length:
+                    truncated_content += sentence + '. '
+                else:
+                    break
+            
+            optimized['content'] = truncated_content.rstrip('. ')
+            optimized['content_truncated'] = True
+            optimized['original_content_length'] = len(content)
+    
+    # 2. 불필요한 메타데이터 제거
+    if 'metadata' in optimized:
+        # 핵심 메타데이터만 유지
+        essential_keys = ['language', 'bill_number', 'case_number', 'notice_number', 'effective_date']
+        metadata = optimized['metadata']
+        optimized['metadata'] = {k: v for k, v in metadata.items() if k in essential_keys}
+    
+    # 3. 배열 크기 제한
+    if 'tags' in optimized and len(optimized['tags']) > 3:
+        optimized['tags'] = optimized['tags'][:3]  # 최대 3개 태그만
+    
+    # 4. 조항 데이터 최적화
+    if 'articles' in optimized and isinstance(optimized['articles'], list):
+        for article in optimized['articles'][:5]:  # 최대 5개 조항만
+            if 'article_content' in article:
+                if len(article['article_content']) > 500:  # 조항별 500자 제한
+                    article['article_content'] = article['article_content'][:500] + "..."
+    
+    return optimized
+
+
+def estimate_message_size(message: Dict[str, Any]) -> tuple[int, bool]:
+    """메시지 크기 추정 및 Kafka 제한 확인"""
+    import json
+    
+    # JSON 직렬화하여 실제 크기 측정
+    serialized = json.dumps(message, ensure_ascii=False)
+    size_bytes = len(serialized.encode('utf-8'))
+    
+    # Kafka 기본 제한 (1MB = 1,048,576 bytes)
+    kafka_limit = 1048576
+    
+    # 안전 마진 (90% 사용)
+    safe_limit = int(kafka_limit * 0.9)
+    
+    is_safe = size_bytes <= safe_limit
+    
+    return size_bytes, is_safe
+
+
+def batch_message_optimization(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """배치 메시지 최적화 및 통계"""
+    from typing import List
+    
+    optimized_messages = []
+    stats = {
+        'original_count': len(messages),
+        'optimized_count': 0,
+        'total_size_reduction': 0,
+        'oversized_messages': 0,
+        'average_size_before': 0,
+        'average_size_after': 0
+    }
+    
+    total_size_before = 0
+    total_size_after = 0
+    
+    for i, msg in enumerate(messages):
+        # 원본 크기 측정
+        original_size, original_safe = estimate_message_size(msg)
+        total_size_before += original_size
+        
+        if not original_safe:
+            stats['oversized_messages'] += 1
+            logger.warning(f"메시지 {i} 크기 초과: {original_size:,} bytes")
+        
+        # 최적화 적용
+        optimized_msg = optimize_message_size(msg)
+        optimized_size, optimized_safe = estimate_message_size(optimized_msg)
+        total_size_after += optimized_size
+        
+        if optimized_safe:
+            optimized_messages.append(optimized_msg)
+            stats['optimized_count'] += 1
+        else:
+            logger.error(f"메시지 {i} 최적화 후에도 크기 초과: {optimized_size:,} bytes")
+            # 더 강력한 최적화 적용 (콘텐츠를 더 짧게)
+            heavily_optimized = optimize_message_size(msg, max_content_length=2000)
+            final_size, final_safe = estimate_message_size(heavily_optimized)
+            
+            if final_safe:
+                optimized_messages.append(heavily_optimized)
+                stats['optimized_count'] += 1
+                logger.info(f"메시지 {i} 강력 최적화 성공: {final_size:,} bytes")
+            else:
+                logger.error(f"메시지 {i} 최적화 실패, 스킵")
+    
+    # 통계 계산
+    if len(messages) > 0:
+        stats['average_size_before'] = int(total_size_before) // len(messages)
+        stats['average_size_after'] = int(total_size_after) // stats['optimized_count'] if stats['optimized_count'] > 0 else 0
+        stats['total_size_reduction'] = int(total_size_before) - int(total_size_after)
+    
+    logger.info(f"메시지 최적화 완료: {stats['optimized_count']}/{stats['original_count']}")
+    logger.info(f"평균 크기 감소: {stats['average_size_before']:,} → {stats['average_size_after']:,} bytes")
+    logger.info(f"총 크기 절약: {stats['total_size_reduction']:,} bytes")
+    
+    return {
+        'messages': optimized_messages,
+        'stats': stats
+    }
 
 # DAG 기본 설정
 default_args = {
@@ -66,39 +187,54 @@ def generate_and_produce_mock_data(**context):
     # Mock 데이터 생성
     generator = MockDataGenerator()
     
-    # 법령 데이터 생성 (50개)
+    # 법령 데이터 생성 (15개로 축소)
     laws_data = []
-    for i in range(50):
+    for i in range(15):
         doc = generator.generate_legal_document()
         # 공포일자를 logical_date로 설정
         doc['published_date'] = execution_date.isoformat() + "Z"
         laws_data.append(doc)
     
-    # 법령 본문 데이터 생성 (20개)
+    # 메시지 크기 최적화 적용
+    optimized_laws = batch_message_optimization(laws_data)
+    laws_data = optimized_laws['messages']
+    logger.info(f"법령 데이터 최적화: {optimized_laws['stats']}")
+    
+    # 법령 본문 데이터 생성 (10개로 축소)
     contents_data = []
-    for i in range(20):
+    for i in range(10):
         content_doc = generator.generate_legal_document()
         content_doc['published_date'] = execution_date.isoformat() + "Z"
         content_doc['content_type'] = 'full_text'
         contents_data.append(content_doc)
     
-    # 법령 조항 데이터 생성 (30개)
+    # 본문 데이터 최적화
+    optimized_contents = batch_message_optimization(contents_data)
+    contents_data = optimized_contents['messages'] 
+    logger.info(f"본문 데이터 최적화: {optimized_contents['stats']}")
+    
+    # 법령 조항 데이터 생성 (15개로 축소)
     articles_data = []
-    for i in range(30):
+    for i in range(15):
         article_doc = generator.generate_legal_document()
         article_doc['published_date'] = execution_date.isoformat() + "Z"
         article_doc['content_type'] = 'articles'
         # 조항 분할
         article_doc['articles'] = [
             {
-                'article_no': f'제{j+1}조',
+                'article_no': j+1,  # 정수로 설정 (문자열에서 변경)
                 'article_title': f'조항 {j+1}',
                 'article_content': f'제{j+1}조의 내용입니다.',
                 'law_id': article_doc['id']
             }
-            for j in range(5)  # 조항당 5개 조문
+            for j in range(3)  # 조항당 3개 조문 (5개→3개로 축소)
         ]
         articles_data.append(article_doc)
+    
+    # 조항 데이터 최적화
+    optimized_articles = batch_message_optimization(articles_data)
+    articles_data = optimized_articles['messages']
+    logger.info(f"조항 데이터 최적화: {optimized_articles['stats']}")
     
     async def produce_data():
         """비동기 데이터 프로듀싱"""
@@ -140,8 +276,8 @@ def generate_and_produce_mock_data(**context):
                 if await producer.send_law_event(law_item, correlation_id):
                     laws_sent += 1
                 
-                # 프로듀싱 간격 조절
-                await asyncio.sleep(1)
+                # 프로듀싱 간격 조절 (안정성과 속도 균형)
+                await asyncio.sleep(0.3)
             
             logger.info(f"법령 목록 프로듀싱 완료: {laws_sent}/{len(laws_data)}")
             
@@ -170,7 +306,7 @@ def generate_and_produce_mock_data(**context):
                 if await producer.send_message(Topics.CONTENT_EVENTS, content_event):
                     contents_sent += 1
                 
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.3)
             
             logger.info(f"법령 본문 프로듀싱 완료: {contents_sent}/{len(contents_data)}")
             
@@ -194,7 +330,7 @@ def generate_and_produce_mock_data(**context):
                 if await producer.send_message(Topics.ARTICLE_EVENTS, article_event):
                     articles_sent += 1
                 
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.3)
             
             logger.info(f"법령 조항 프로듀싱 완료: {articles_sent}/{len(articles_data)}")
             
@@ -226,14 +362,30 @@ def generate_and_produce_mock_data(**context):
         finally:
             await producer.stop()
     
-    # 이벤트 루프에서 실행
+    # 이벤트 루프에서 실행 (개선된 안정성)
+    import time
+    
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    loop.run_until_complete(produce_data())
+    # 재시도 로직이 포함된 프로듀싱 실행
+    max_attempts = 2  # 최대 2회 재시도
+    for attempt in range(max_attempts):
+        try:
+            result = loop.run_until_complete(produce_data())
+            logger.info(f"프로듀싱 성공 (시도 {attempt + 1}/{max_attempts})")
+            break
+        except Exception as e:
+            logger.error(f"프로듀싱 시도 {attempt + 1} 실패: {e}")
+            if attempt < max_attempts - 1:
+                logger.info("10초 후 재시도...")
+                time.sleep(10)
+            else:
+                logger.error("모든 프로듀싱 시도 실패")
+                raise
     
     return {
         'laws_produced': len(laws_data),
@@ -270,7 +422,7 @@ def consume_kafka_messages(**context):
             timeout = 600  # 10분
             
             # 배치 크기만큼 처리 (앞서 프로듀싱한 메시지 수)
-            expected_messages = 100  # 50 + 20 + 30
+            expected_messages = 40  # 15 + 10 + 15
             
             logger.info(f"메시지 컨슈밍 시작 - 예상 메시지: {expected_messages}개")
             
@@ -363,7 +515,6 @@ def blue_green_switch(**context):
         raise
 
 
-# Task 정의
 task_1_produce = PythonOperator(
     task_id='generate_and_produce_mock_data',
     python_callable=generate_and_produce_mock_data,
@@ -372,10 +523,10 @@ task_1_produce = PythonOperator(
     ## Mock 데이터 생성 및 Kafka 프로듀싱
     
     - logical_date(전날) 기준 공포일자 데이터 생성
-    - 법령목록(50개) → law-events 토픽
-    - 법령본문(20개) → content-events 토픽  
-    - 법령조항(30개) → article-events 토픽
-    - 총 100개 메시지 프로듀싱
+    - 법령목록(15개) → law-events 토픽
+    - 법령본문(10개) → content-events 토픽  
+    - 법령조항(15개) → article-events 토픽
+    - 총 40개 메시지 프로듀싱 (재시도 로직 포함)
     """,
 )
 
@@ -389,7 +540,7 @@ task_2_consume = PythonOperator(
     - 3개 토픽에서 메시지 수신
     - Green MySQL 데이터베이스에 저장
     - 데이터 정합성 확인
-    - 최대 10분 또는 100개 메시지 처리
+    - 최대 10분 또는 40개 메시지 처리
     """,
 )
 

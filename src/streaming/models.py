@@ -246,9 +246,15 @@ class ArticleEvent(KafkaMessage):
     
     def get_partition_key(self) -> str:
         """조항 그룹핑 최적화된 파티션 키"""
-        if self.law_master_no and self.article_no:
+        if self.law_master_no and self.article_no is not None:
+            # article_no를 정수로 변환 (문자열인 경우 처리)
+            try:
+                article_num = int(self.article_no) if isinstance(self.article_no, (str, int)) else 0
+            except (ValueError, TypeError):
+                article_num = 0
+            
             # 관련 조항들을 동일 파티션에 그룹핑 (조문 10개 단위)
-            article_group = self.article_no // 10
+            article_group = article_num // 10
             
             # 소관부처별 분산으로 Hot Partition 방지
             if self.ministry_code:
@@ -274,9 +280,15 @@ class ArticleEvent(KafkaMessage):
                            articles_data: list, ministry_code: Optional[int] = None,
                            correlation_id: Optional[str] = None) -> 'ArticleEvent':
         """조항 업데이트 이벤트 생성"""
-        # 대표 조항 번호 (첫 번째 조항)
+        # 대표 조항 번호 (첫 번째 조항) - 안전한 타입 처리
         first_article = articles_data[0] if articles_data else {}
-        article_no = first_article.get('article_no', 0)
+        article_no_raw = first_article.get('article_no', 0)
+        
+        # article_no를 정수로 안전하게 변환
+        try:
+            article_no = int(article_no_raw) if isinstance(article_no_raw, (str, int)) else 0
+        except (ValueError, TypeError):
+            article_no = 0
         
         return cls(
             event_type=EventType.ARTICLE_UPDATED,

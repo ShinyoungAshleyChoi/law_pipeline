@@ -104,8 +104,8 @@ class LegalDataProducer:
             future.add_callback(self._on_send_success, message=message, topic=topic)
             future.add_errback(self._on_send_error, message=message, topic=topic)
 
-            # 결과 대기 (타임아웃 있음)
-            record_metadata = future.get(timeout=10)
+            # 결과 대기 (타임아웃 줄임)
+            record_metadata = future.get(timeout=5)  # 10초 → 5초로 단축
 
             self._stats['messages_sent'] += 1
             self._stats['bytes_sent'] += len(json.dumps(value))
