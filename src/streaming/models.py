@@ -125,7 +125,7 @@ class LawEvent(KafkaMessage):
         if self.data is None:
             self.data = {}
         
-        # 법령 정보를 data에 저장
+        # 기존 data에 개별 필드 추가 (기존 데이터 유지)
         if self.law_id:
             self.data['law_id'] = self.law_id
         if self.law_master_no:

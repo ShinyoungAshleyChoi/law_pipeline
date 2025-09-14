@@ -307,6 +307,11 @@ class LegalDataConsumer:
                         data_keys=list(law_data.keys()) if isinstance(law_data, dict) else type(law_data).__name__,
                         data_sample=str(law_data)[:500])  # 처음 500자만 로깅
             
+            # 전체 raw 데이터 출력 (디버깅용)
+            logger.info("RAW 법령 데이터 전체", 
+                        event_id=kafka_message.event_id,
+                        raw_data=law_data)
+            
             # 법령 데이터 변환 - 실제 Mock API 응답 필드명 사용
             logger.info("법령 데이터 변환 시작")
             law_list = LawList(

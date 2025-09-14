@@ -529,7 +529,7 @@ def blue_green_switch(**context):
         'password': 'legal_pass_2024!',
         'database': 'legal_db',
         'connection_timeout': 30,
-        'autocommit': False  # 트랜잭션 관리
+        'autocommit': True  # 명시적 트랜잭션 관리를 위해 autocommit 활성화
     }
     
     def get_db_connection(host):
@@ -593,6 +593,12 @@ def blue_green_switch(**context):
         try:
             # 타겟 DB 기존 데이터 백업 (선택적)
             target_cursor = target_conn.cursor()
+            
+            # 기존 트랜잭션이 있으면 커밋하고 새 트랜잭션 시작
+            try:
+                target_conn.commit()
+            except MySQLError:
+                pass  # 활성 트랜잭션이 없는 경우
             
             # 트랜잭션 시작
             target_conn.start_transaction()
@@ -703,6 +709,17 @@ def blue_green_switch(**context):
         logger.info(f"블루그린 스위칭 실행: {current_active} → {new_active}")
         
         # 트랜잭션으로 양쪽 DB 설정 동시 업데이트
+        # 기존 트랜잭션이 있으면 커밋하고 새로운 트랜잭션 시작
+        try:
+            blue_conn.commit()
+        except MySQLError:
+            pass  # 활성 트랜잭션이 없는 경우
+        
+        try:
+            green_conn.commit()
+        except MySQLError:
+            pass  # 활성 트랜잭션이 없는 경우
+        
         blue_conn.start_transaction()
         green_conn.start_transaction()
         

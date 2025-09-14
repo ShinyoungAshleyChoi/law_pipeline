@@ -190,6 +190,12 @@ class LegalDataProducer:
                 'revision_type': law.revision_type
             }
 
+            # Producer에서 전송하는 데이터 구조 로깅 (디버깅용)
+            logger.info("Producer 전송 데이터", 
+                       law_id=law.law_id,
+                       data_keys=list(law_data.keys()),
+                       data_sample=law_data)
+
             # 이벤트 생성
             event = LawEvent.create_updated_event(
                 law_id=str(law.law_id),
