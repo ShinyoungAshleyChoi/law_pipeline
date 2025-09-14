@@ -384,8 +384,8 @@ class LegalDataConsumer:
     async def _process_article_event(self, kafka_message: KafkaMessage) -> None:
         """법령 조항 이벤트 처리"""
         try:
-            articles_data = kafka_message.data.get('articles', [])
-            law_id = kafka_message.data.get('법령ID')  # 전체 응답에서 법령ID 가져오기
+            articles_data = kafka_message.data.get('articles', [])  # 실제 저장되는 필드명은 'articles'
+            law_id = kafka_message.data.get('law_id')  # 영문 필드명으로 수정
             
             # 데이터베이스 저장
             with self.repository.transaction():
@@ -395,23 +395,23 @@ class LegalDataConsumer:
                     law_article = LawArticle(
                         law_key=law_id,  # 법령ID를 law_key로 사용
                         law_id=law_id,
-                        article_no=article_data.get('조문번호', ''),  # Mock 데이터의 실제 필드명
-                        article_title=article_data.get('조문제목', ''),
-                        article_content=article_data.get('조문내용', '')
+                        article_no=article_data.get('article_no', ''),  # 영문 필드명으로 수정
+                        article_title=article_data.get('article_title', ''),  # 영문 필드명으로 수정
+                        article_content=article_data.get('article_content', '')  # 영문 필드명으로 수정
                     )
                     
                     if self.repository.save_law_article(law_article):
                         stored_count += 1
                     else:
                         logger.warning("조항 저장 실패", 
-                                     law_id=article_data.get('law_id'),
+                                     law_id=law_id,
                                      article_no=article_data.get('article_no'))
                 
                 self._stats['articles_stored'] += stored_count
                 logger.info("법령 조항 저장 완료", 
                            law_id=law_id,
                            stored_count=stored_count)
-                    
+
         except Exception as e:
             logger.error("법령 조항 이벤트 처리 실패", error=str(e))
             raise

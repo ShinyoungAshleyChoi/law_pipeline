@@ -91,7 +91,7 @@ class LegalDataRepository:
             'host': self.target_db_host,
             'port': 3306,
             'charset': 'utf8mb4',
-            'autocommit': False,
+            'autocommit': True,
             'connection_timeout': 30
         }
         
