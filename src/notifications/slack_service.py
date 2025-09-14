@@ -45,6 +45,7 @@ class BatchResult:
     duration: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    detail_message: Optional[str] = None
 
 class SlackNotificationService:
     """슬랙 알림 서비스"""

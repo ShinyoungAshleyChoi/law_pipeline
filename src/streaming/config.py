@@ -126,7 +126,7 @@ def get_kafka_config() -> KafkaConfig:
     # Bootstrap servers 설정
     bootstrap_servers_str = os.getenv(
         'KAFKA_BOOTSTRAP_SERVERS',
-        'kafka1:29092,kafka2:29093,kafka3:29094'
+        'kafka1:9092,kafka2:9093,kafka3:9094'
     )
     bootstrap_servers = [server.strip() for server in bootstrap_servers_str.split(',')]
     

@@ -101,8 +101,8 @@ class LegalDataProducer:
             future = self.producer.send(topic, value=value, key=key)
 
             # 콜백 등록
-            future.add_callback(self._on_send_success, message, topic)
-            future.add_errback(self._on_send_error, message, topic)
+            future.add_callback(self._on_send_success, message=message, topic=topic)
+            future.add_errback(self._on_send_error, message=message, topic=topic)
 
             # 결과 대기 (타임아웃 있음)
             record_metadata = future.get(timeout=10)

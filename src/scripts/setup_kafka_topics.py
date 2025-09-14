@@ -22,9 +22,9 @@ class KafkaTopicSetup:
     
     def __init__(self, bootstrap_servers: List[str] = None):
         self.bootstrap_servers = bootstrap_servers or [
-            'kafka1:29092',
-            'kafka2:29093',
-            'kafka3:29094'
+            'kafka1:9092',
+            'kafka2:9093',
+            'kafka3:9094'
         ]
         
         try:
@@ -408,7 +408,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Kafka 토픽 설정 스크립트')
     parser.add_argument('--servers', nargs='+', 
-                       default=['kafka1:9092', 'kafka2:9093', 'kafka:9094'],
+                       default=['localhost:29092', 'localhost:29093', 'localhost:29094'],
                        help='Kafka 부트스트랩 서버 목록')
     parser.add_argument('--action', choices=['setup', 'list', 'describe', 'test'], 
                        default='setup',

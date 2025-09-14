@@ -12,6 +12,8 @@ class LawListItem:
     enforcement_date: date
     law_type: Optional[str] = None
     promulgation_date: Optional[date] = None
+    ministry_name: Optional[str] = None
+    revision_type: Optional[str] = None
 
 @dataclass  
 class LawContent:
