@@ -23,15 +23,16 @@ class KafkaConfig:
         if self.producer_config is None:
             self.producer_config = {
                 'acks': 'all',  # 모든 replica 확인
-                'retries': 3,
                 'batch_size': 16384,
                 'linger_ms': 100,  # 100ms 대기 후 전송
                 'buffer_memory': 33554432,  # 32MB
                 'compression_type': 'lz4',
-                'max_in_flight_requests_per_connection': 5,
+                'max_in_flight_requests_per_connection': 1,
                 'enable_idempotence': True,  # 중복 방지
                 'request_timeout_ms': 30000,
                 'delivery_timeout_ms': 120000,
+                'retries': 2147483647,
+                'retry_backoff_ms': 100
             }
         
         if self.consumer_config is None:

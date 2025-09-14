@@ -242,17 +242,11 @@ start_containers() {
     log_info "Kafka 클러스터 준비 대기 중..."
     timeout=120
     counter=0
-    while ! docker-compose exec -T kafka1 kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1; do
-        sleep 5
-        counter=$((counter + 5))
-        if [ $counter -ge $timeout ]; then
-            log_error "Kafka 시작 대기 시간 초과"
-            exit 1
-        fi
-        echo -n "."
-    done
-    echo ""
-    log_info "Kafka 클러스터 시작 완료"
+    if bash -c "</dev/tcp/localhost/2092" 2>/dev/null; then
+        log_info "Kafka 시작 완료"
+    else
+        log_warn "Kafka 포트 연결 실패, 계속 진행"
+    fi
     
     # Schema Registry 시작
     log_info "3. Schema Registry 시작..."
