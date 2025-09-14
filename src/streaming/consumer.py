@@ -133,7 +133,7 @@ class LegalDataConsumer:
                     if processed_count % 10 == 0:
                         self.consumer.commit()
                         self._stats['messages_committed'] += 10
-                        logger.debug("주기적 커밋", processed=processed_count)
+                        logger.info("주기적 커밋", processed=processed_count)
                     
                 except Exception as e:
                     logger.error("메시지 처리 실패",
@@ -161,31 +161,64 @@ class LegalDataConsumer:
     async def _process_message(self, message) -> None:
         """개별 메시지 처리"""
         try:
+            logger.info("메시지 파싱 시작",
+                        topic=message.topic,
+                        partition=message.partition,
+                        offset=message.offset,
+                        key=message.key,
+                        value_type=type(message.value).__name__)
+            
+            # 메시지 값이 올바른지 확인
+            if message.value is None:
+                logger.error("메시지 값이 None입니다", 
+                           topic=message.topic, 
+                           partition=message.partition, 
+                           offset=message.offset)
+                raise Exception("메시지 값이 None입니다")
+            
             # 메시지 파싱
-            kafka_message = KafkaMessage.from_dict(message.value)
+            try:
+                kafka_message = KafkaMessage.from_dict(message.value)
+                logger.info("메시지 파싱 성공", 
+                           event_id=kafka_message.event_id,
+                           event_type=kafka_message.event_type.value)
+            except Exception as parse_error:
+                logger.error("메시지 파싱 실패", 
+                           topic=message.topic,
+                           partition=message.partition,
+                           offset=message.offset,
+                           message_value=str(message.value)[:1000],  # 처음 1000자만
+                           parse_error=str(parse_error))
+                raise Exception(f"메시지 파싱 실패: {parse_error}")
             
             # 중복 처리 방지
             if kafka_message.event_id in self._processed_message_ids:
-                logger.debug("중복 메시지 스킵", event_id=kafka_message.event_id)
+                logger.info("중복 메시지 스킵", event_id=kafka_message.event_id)
                 return
             
             self._processed_message_ids.add(kafka_message.event_id)
             
-            logger.debug("메시지 처리 시작",
+            logger.info("메시지 처리 시작",
                         topic=message.topic,
                         event_id=kafka_message.event_id,
-                        event_type=kafka_message.event_type.value)
+                        event_type=kafka_message.event_type.value,
+                        data_available=kafka_message.data is not None)
             
             # 토픽별 처리
             if message.topic == Topics.LAW_EVENTS:
+                logger.info("법령 이벤트 처리 시작")
                 await self._process_law_event(kafka_message)
             elif message.topic == Topics.CONTENT_EVENTS:
+                logger.info("콘텐츠 이벤트 처리 시작")
                 await self._process_content_event(kafka_message)
             elif message.topic == Topics.ARTICLE_EVENTS:
+                logger.info("조항 이벤트 처리 시작")
                 await self._process_article_event(kafka_message)
             elif message.topic == Topics.BATCH_STATUS:
+                logger.info("배치 상태 이벤트 처리 시작")
                 await self._process_batch_status_event(kafka_message)
             elif message.topic == Topics.NOTIFICATIONS:
+                logger.info("알림 이벤트 처리 시작")
                 await self._process_notification_event(kafka_message)
             else:
                 logger.warning("알 수 없는 토픽", topic=message.topic)
@@ -194,43 +227,77 @@ class LegalDataConsumer:
             self._stats['messages_processed'] += 1
             self._stats['last_processed_time'] = time.time()
             
-            logger.debug("메시지 처리 완료",
-                        event_id=kafka_message.event_id)
+            logger.info("메시지 처리 완료",
+                        event_id=kafka_message.event_id,
+                        topic=message.topic)
                         
         except Exception as e:
-            logger.error("메시지 처리 실패", error=str(e))
+            logger.error("메시지 처리 실패", 
+                        topic=message.topic,
+                        partition=message.partition,
+                        offset=message.offset,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        message_key=message.key,
+                        message_value_preview=str(message.value)[:200] if message.value else 'None')
             raise
     
     async def _process_law_event(self, kafka_message: KafkaMessage) -> None:
         """법령 이벤트 처리"""
         try:
+            logger.info("법령 이벤트 처리 시작", event_id=kafka_message.event_id)
             law_data = kafka_message.data
             
-            # 법령 데이터 변환
+            # 원본 데이터 로깅
+            logger.info("수신한 법령 데이터", 
+                        event_id=kafka_message.event_id,
+                        data_keys=list(law_data.keys()) if isinstance(law_data, dict) else type(law_data).__name__,
+                        data_sample=str(law_data)[:500])  # 처음 500자만 로깅
+            
+            # 법령 데이터 변환 - 실제 Mock API 응답 필드명 사용
+            logger.info("법령 데이터 변환 시작")
             law_list = LawList(
-                law_id=law_data.get('law_id'),
-                law_serial_no=law_data.get('law_master_no'),  # 매핑
-                law_name_korean=law_data.get('law_name'),
-                enforcement_date=int(law_data.get('enforcement_date', '').replace('-', '')) if law_data.get('enforcement_date') else None,
-                promulgation_date=int(law_data.get('promulgation_date', '').replace('-', '')) if law_data.get('promulgation_date') else None,
-                law_type_name=law_data.get('law_type'),
-                ministry_name=law_data.get('ministry_name'),
-                revision_type=law_data.get('revision_type'),
-                created_at=datetime.now()
+                law_id=law_data.get('법령ID'),  # Mock 데이터의 실제 필드명
+                law_name_korean=law_data.get('법령명'),
+                enforcement_date=law_data.get('시행일자'),
+                promulgation_date=law_data.get('공포일자'),
+                law_type_name=law_data.get('법령구분'),
+                ministry_name=law_data.get('소관부처')
             )
             
+            logger.info("변환된 법령 데이터", 
+                        law_id=law_list.law_id,
+                        law_name=law_list.law_name_korean,
+                        enforcement_date=law_list.enforcement_date,
+                        law_type=law_list.law_type_name,
+                        ministry=law_list.ministry_name)
+            
             # 데이터베이스 저장
+            logger.info("데이터베이스 저장 시작")
             with self.repository.transaction():
+                logger.info("트랜잭션 내에서 저장 시도")
                 success = self.repository.save_law_list(law_list)
                 
                 if success:
                     self._stats['laws_stored'] += 1
-                    logger.debug("법령 저장 완료", law_id=law_data.get('law_id'))
+                    logger.info("법령 저장 성공", 
+                               law_id=law_data.get('법령ID'),
+                               event_id=kafka_message.event_id)
                 else:
-                    raise Exception("법령 저장 실패")
+                    error_msg = f"법령 저장 실패 law_data={law_data}"
+                    logger.error("법령 저장이 실패함", 
+                               law_id=law_data.get('법령ID'),
+                               event_id=kafka_message.event_id,
+                               law_data_keys=list(law_data.keys()) if isinstance(law_data, dict) else 'not_dict')
+                    raise Exception(error_msg)
                     
         except Exception as e:
-            logger.error("법령 이벤트 처리 실패", error=str(e))
+            logger.error("법령 이벤트 처리 실패", 
+                        event_id=kafka_message.event_id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        data_available=kafka_message.data is not None,
+                        data_type=type(kafka_message.data).__name__ if kafka_message.data else 'None')
             raise
     
     async def _process_content_event(self, kafka_message: KafkaMessage) -> None:
@@ -238,14 +305,13 @@ class LegalDataConsumer:
         try:
             content_data = kafka_message.data
             
-            # 법령 본문 데이터 변환
+            # 법령 본문 데이터 변환 - 실제 Mock API 응답 필드명 사용  
             law_content = LawContent(
-                law_id=content_data.get('law_id'),
-                law_name_korean=content_data.get('law_name'),
-                article_content=content_data.get('content'),
-                enforcement_date=int(content_data.get('enforcement_date', '').replace('-', '')) if content_data.get('enforcement_date') else None,
-                law_type=content_data.get('law_type'),
-                created_at=datetime.now()
+                law_id=content_data.get('법령ID'),  # Mock 데이터의 실제 필드명
+                law_name_korean=content_data.get('법령명'),
+                article_content=content_data.get('법령내용'),  # 'content'가 아니라 '법령내용'
+                enforcement_date=content_data.get('시행일자'),
+                promulgation_date=content_data.get('공포일자')
             )
             
             # 데이터베이스 저장
@@ -254,7 +320,7 @@ class LegalDataConsumer:
                 
                 if success:
                     self._stats['contents_stored'] += 1
-                    logger.debug("법령 본문 저장 완료", law_id=content_data.get('law_id'))
+                    logger.info("법령 본문 저장 완료", law_id=content_data.get('law_id'))
                 else:
                     raise Exception("법령 본문 저장 실패")
                     
@@ -266,6 +332,7 @@ class LegalDataConsumer:
         """법령 조항 이벤트 처리"""
         try:
             articles_data = kafka_message.data.get('articles', [])
+            law_id = kafka_message.data.get('법령ID')  # 전체 응답에서 법령ID 가져오기
             
             # 데이터베이스 저장
             with self.repository.transaction():
@@ -273,17 +340,11 @@ class LegalDataConsumer:
                 
                 for article_data in articles_data:
                     law_article = LawArticle(
-                        law_key=article_data.get('law_id'),
-                        law_id=article_data.get('law_id'),
-                        law_name_korean=article_data.get('law_name'),
-                        article_no=article_data.get('article_no'),
-                        article_title=article_data.get('article_title'),
-                        article_content=article_data.get('article_content'),
-                        paragraph_no=article_data.get('paragraph_no'),
-                        paragraph_content=article_data.get('paragraph_content'),
-                        item_no=article_data.get('item_no'),
-                        item_content=article_data.get('item_content'),
-                        created_at=datetime.now()
+                        law_key=law_id,  # 법령ID를 law_key로 사용
+                        law_id=law_id,
+                        article_no=article_data.get('조문번호', ''),  # Mock 데이터의 실제 필드명
+                        article_title=article_data.get('조문제목', ''),
+                        article_content=article_data.get('조문내용', '')
                     )
                     
                     if self.repository.save_law_article(law_article):
@@ -294,8 +355,8 @@ class LegalDataConsumer:
                                      article_no=article_data.get('article_no'))
                 
                 self._stats['articles_stored'] += stored_count
-                logger.debug("법령 조항 저장 완료", 
-                           law_id=kafka_message.data.get('law_id'),
+                logger.info("법령 조항 저장 완료", 
+                           law_id=law_id,
                            stored_count=stored_count)
                     
         except Exception as e:
@@ -342,7 +403,7 @@ class LegalDataConsumer:
                         message=message
                     )
             
-            logger.debug("알림 이벤트 처리 완료", 
+            logger.info("알림 이벤트 처리 완료", 
                         title=title,
                         severity=severity)
                     

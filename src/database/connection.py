@@ -105,20 +105,58 @@ class DatabaseConnection:
     def get_connection(self) -> Generator[mysql.connector.MySQLConnection, None, None]:
         """MySQL Connector 연결 컨텍스트 매니저"""
         if self._connection_pool is None:
+            logger.debug("연결 풀이 없어 초기화 시도")
             self.initialize()
         
         connection = None
         try:
+            logger.debug("연결 풀에서 연결 획득 시도")
             connection = self._connection_pool.get_connection()
+            logger.debug("연결 획득 성공", 
+                        connection_id=connection.connection_id if hasattr(connection, 'connection_id') else 'unknown',
+                        is_connected=connection.is_connected())
             yield connection
+            logger.debug("연결 사용 완료")
+            
         except Error as e:
+            logger.error("MySQL 연결 에러 발생", 
+                        mysql_error_code=e.errno if hasattr(e, 'errno') else 'unknown',
+                        mysql_error_msg=e.msg if hasattr(e, 'msg') else str(e),
+                        connection_available=connection is not None)
+            
             if connection:
-                connection.rollback()
-            logger.error("데이터베이스 연결 오류", error=str(e))
+                try:
+                    logger.debug("연결 롤백 시도")
+                    connection.rollback()
+                    logger.debug("연결 롤백 완료")
+                except Exception as rollback_error:
+                    logger.error("롤백 실패", error=str(rollback_error))
             raise
+            
+        except Exception as e:
+            logger.error("일반 연결 오류", 
+                        error=str(e), 
+                        error_type=type(e).__name__,
+                        connection_available=connection is not None)
+            
+            if connection:
+                try:
+                    connection.rollback()
+                    logger.debug("예외 상황에서 롤백 완료")
+                except Exception as rollback_error:
+                    logger.error("예외 상황 롤백 실패", error=str(rollback_error))
+            raise
+            
         finally:
             if connection and connection.is_connected():
-                connection.close()
+                logger.debug("연결 반납 시도")
+                try:
+                    connection.close()
+                    logger.debug("연결 반납 완료")
+                except Exception as close_error:
+                    logger.error("연결 종료 실패", error=str(close_error))
+            elif connection:
+                logger.warning("이미 닫힌 연결")
     
     def test_connection(self) -> bool:
         """데이터베이스 연결 테스트"""

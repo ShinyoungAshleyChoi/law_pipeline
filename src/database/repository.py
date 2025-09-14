@@ -29,27 +29,49 @@ class LegalDataRepository:
         """트랜잭션 컨텍스트 매니저"""
         if self._transaction_active:
             # 이미 트랜잭션이 활성화된 경우 중첩 트랜잭션 지원
+            logger.debug("중첩 트랜잭션 사용")
             yield
             return
             
-        with db_connection.get_connection() as conn:
-            self._current_connection = conn
-            self._transaction_active = True
-            
-            try:
-                conn.start_transaction()
-                logger.debug("트랜잭션 시작")
-                yield
-                conn.commit()
-                logger.debug("트랜잭션 커밋 완료")
+        logger.debug("새 트랜잭션 시작 시도")
+        
+        try:
+            with db_connection.get_connection() as conn:
+                logger.debug("데이터베이스 연결 획득 성공")
+                self._current_connection = conn
+                self._transaction_active = True
                 
-            except Exception as e:
-                conn.rollback()
-                logger.error("트랜잭션 롤백", error=str(e))
-                raise
-            finally:
-                self._current_connection = None
-                self._transaction_active = False
+                try:
+                    conn.start_transaction()
+                    logger.debug("트랜잭션 시작 성공")
+                    yield
+                    conn.commit()
+                    logger.debug("트랜잭션 커밋 완료")
+                    
+                except Exception as e:
+                    logger.error("트랜잭션 처리 중 에러 발생", 
+                               error=str(e), 
+                               error_type=type(e).__name__,
+                               connection_active=conn.is_connected() if hasattr(conn, 'is_connected') else 'unknown')
+                    
+                    try:
+                        conn.rollback()
+                        logger.error("트랜잭션 롤백 완료", error=str(e))
+                    except Exception as rollback_error:
+                        logger.error("트랜잭션 롤백도 실패", 
+                                   original_error=str(e),
+                                   rollback_error=str(rollback_error))
+                    raise
+                    
+                finally:
+                    self._current_connection = None
+                    self._transaction_active = False
+                    
+        except Exception as e:
+            logger.error("데이터베이스 연결 획득 실패", 
+                       error=str(e), 
+                       error_type=type(e).__name__)
+            raise
     
     def _get_connection(self):
         """현재 연결 반환 (트랜잭션 중이면 현재 연결, 아니면 새 연결)"""
@@ -61,28 +83,54 @@ class LegalDataRepository:
     
     def save_law_list(self, law_list: LawList) -> bool:
         """법령 목록 데이터 저장/업데이트"""
+        logger.debug("법령 목록 저장 시작", 
+                    law_id=getattr(law_list, 'law_id', None),
+                    law_name=getattr(law_list, 'law_name_korean', None))
+        
+        # 입력 데이터 검증
+        if not hasattr(law_list, 'law_id') or not law_list.law_id:
+            logger.error("법령ID가 없습니다", data=vars(law_list))
+            return False
+            
         try:
             if self._transaction_active:
+                logger.debug("트랜잭션 내에서 저장")
                 return self._save_law_list_with_connection(self._current_connection, law_list)
             else:
+                logger.debug("새 연결로 저장")
                 with db_connection.get_connection() as conn:
                     return self._save_law_list_with_connection(conn, law_list)
                     
+        except MySQLError as e:
+            logger.error("MySQL 에러 발생", 
+                        law_id=getattr(law_list, 'law_id', None), 
+                        mysql_error_code=e.errno,
+                        mysql_error_msg=e.msg,
+                        data=vars(law_list))
+            return False
         except Exception as e:
-            logger.error("법령 목록 저장 실패", law_id=law_list.law_id, error=str(e))
+            logger.error("법령 목록 저장 실패", 
+                        law_id=getattr(law_list, 'law_id', None), 
+                        data=vars(law_list), 
+                        error=str(e),
+                        error_type=type(e).__name__)
             return False
     
     def _save_law_list_with_connection(self, conn, law_list: LawList) -> bool:
         """연결을 사용하여 법령 목록 저장"""
+        logger.debug("연결을 통한 법령 목록 저장 시작", law_id=getattr(law_list, 'law_id', None))
+        
         cursor = conn.cursor()
         try:
             # 기존 법령 확인 (law_id 기준)
             if law_list.law_id:
+                logger.debug("기존 법령 확인 중", law_id=law_list.law_id)
                 check_sql = "SELECT id FROM law_list WHERE law_id = %s"
                 cursor.execute(check_sql, (law_list.law_id,))
                 existing = cursor.fetchone()
                 
                 if existing:
+                    logger.debug("기존 법령 발견, 업데이트 실행", law_id=law_list.law_id, existing_id=existing[0])
                     # 업데이트
                     update_sql = """
                     UPDATE law_list SET 
@@ -91,43 +139,60 @@ class LegalDataRepository:
                         law_type_name = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE law_id = %s
                     """
-                    cursor.execute(update_sql, (
-                        law_list.law_name_korean, law_list.law_abbr_name,
-                        law_list.enforcement_date, law_list.ministry_name,
-                        law_list.law_type_name, law_list.law_id
-                    ))
-                    logger.debug("법령 목록 업데이트 완료", law_id=law_list.law_id)
+                    update_params = (
+                        getattr(law_list, 'law_name_korean', None), 
+                        getattr(law_list, 'law_abbr_name', None),
+                        getattr(law_list, 'enforcement_date', None), 
+                        getattr(law_list, 'ministry_name', None),
+                        getattr(law_list, 'law_type_name', None), 
+                        getattr(law_list, 'law_id', None)
+                    )
+                    logger.debug("업데이트 파라미터", params=update_params)
+                    cursor.execute(update_sql, update_params)
+                    logger.debug("법령 목록 업데이트 완료", law_id=getattr(law_list, 'law_id', None), rowcount=cursor.rowcount)
                 else:
-                    # 삽입
+                    logger.debug("새 법령, 삽입 실행", law_id=law_list.law_id)
+                    # 삽입 - 실제로 사용하는 필드만
                     insert_sql = """
                     INSERT INTO law_list (
-                        target, keyword, section, total_cnt, page, law_id, law_serial_no,
-                        current_history_code, law_name_korean, law_abbr_name, promulgation_date,
-                        promulgation_no, revision_type, ministry_name, ministry_code,
-                        law_type_name, joint_ministry_type, joint_promulgation_no,
-                        enforcement_date, self_other_law_yn, law_detail_link
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        law_id, law_name_korean, enforcement_date, 
+                        promulgation_date, law_type_name, ministry_name
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
                     """
-                    cursor.execute(insert_sql, (
-                        law_list.target, law_list.keyword, law_list.section,
-                        law_list.total_cnt, law_list.page, law_list.law_id,
-                        law_list.law_serial_no, law_list.current_history_code,
-                        law_list.law_name_korean, law_list.law_abbr_name,
-                        law_list.promulgation_date, law_list.promulgation_no,
-                        law_list.revision_type, law_list.ministry_name,
-                        law_list.ministry_code, law_list.law_type_name,
-                        law_list.joint_ministry_type, law_list.joint_promulgation_no,
-                        law_list.enforcement_date, law_list.self_other_law_yn,
-                        law_list.law_detail_link
-                    ))
-                    logger.debug("법령 목록 삽입 완료", law_id=law_list.law_id)
+                    insert_params = (
+                        getattr(law_list, 'law_id', None),
+                        getattr(law_list, 'law_name_korean', None), 
+                        getattr(law_list, 'enforcement_date', None),
+                        getattr(law_list, 'promulgation_date', None),
+                        getattr(law_list, 'law_type_name', None),
+                        getattr(law_list, 'ministry_name', None)
+                    )
+                    logger.debug("삽입 파라미터", params=insert_params)
+                    cursor.execute(insert_sql, insert_params)
+                    logger.debug("법령 목록 삽입 완료", law_id=getattr(law_list, 'law_id', None), rowcount=cursor.rowcount)
             
-            return cursor.rowcount > 0
+            success = cursor.rowcount > 0
+            logger.debug("저장 결과", success=success, rowcount=cursor.rowcount)
+            return success
             
+        except MySQLError as e:
+            logger.error("MySQL 쿼리 실행 에러", 
+                        law_id=getattr(law_list, 'law_id', None),
+                        mysql_error_code=e.errno,
+                        mysql_error_msg=e.msg,
+                        sql_state=getattr(e, 'sqlstate', None))
+            raise
+        except Exception as e:
+            logger.error("법령 목록 저장 중 예외 발생", 
+                        law_id=getattr(law_list, 'law_id', None),
+                        error=str(e),
+                        error_type=type(e).__name__)
+            raise
         finally:
             cursor.close()
+            logger.debug("커서 닫기 완료")
     
-    def get_law_list_by_id(self, law_id: int) -> Optional[LawList]:
+    def get_law_list_by_id(self, law_id: str) -> Optional[LawList]:
         """법령ID로 법령 목록 조회"""
         try:
             with db_connection.get_connection() as conn:
@@ -158,58 +223,43 @@ class LegalDataRepository:
                     return self._save_law_content_with_connection(conn, law_content)
                     
         except Exception as e:
-            logger.error("법령 본문 저장 실패", law_id=law_content.law_id, error=str(e))
+            logger.error("법령 본문 저장 실패", law_id=getattr(law_content, 'law_id', None), error=str(e))
             return False
     
     def _save_law_content_with_connection(self, conn, law_content: LawContent) -> bool:
         """연결을 사용하여 법령 본문 저장"""
         cursor = conn.cursor()
         try:
+            # 실제로 사용하는 필드만으로 간단한 INSERT 구문 사용
             insert_sql = """
             INSERT INTO law_content (
-                law_id, promulgation_date, promulgation_no, language, law_type, law_type_code,
-                law_name_korean, law_name_hanja, law_abbr_name, title_change_yn, korean_law_yn,
-                chapter_section_no, ministry_code, ministry_name, phone_number, enforcement_date,
-                revision_type, appendix_edit_yn, promulgated_law_yn, department_name, department_phone,
-                joint_ministry_type, joint_type_code, joint_promulgation_no, article_no, article_sub_no,
-                article_yn, article_title, article_enforcement_date, article_revision_type,
-                article_move_before, article_move_after, article_change_yn, article_content,
-                paragraph_no, paragraph_revision_type, paragraph_revision_date_str, paragraph_content,
-                item_no, item_content, article_reference, addendum_promulgation_date, addendum_promulgation_no,
-                addendum_content, appendix_no, appendix_sub_no, appendix_type, appendix_title,
-                appendix_form_file_link, appendix_hwp_filename, appendix_pdf_file_link, appendix_pdf_filename,
-                appendix_image_filename, appendix_content, revision_content, revision_reason
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                law_id, law_name_korean, article_content, 
+                enforcement_date, promulgation_date
+            ) VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                law_name_korean = VALUES(law_name_korean),
+                article_content = VALUES(article_content),
+                enforcement_date = VALUES(enforcement_date),
+                promulgation_date = VALUES(promulgation_date),
+                updated_at = CURRENT_TIMESTAMP
             """
+            
+            # 실제로 설정된 필드만 전달 (5개)
             cursor.execute(insert_sql, (
-                law_content.law_id, law_content.promulgation_date, law_content.promulgation_no,
-                law_content.language, law_content.law_type, law_content.law_type_code,
-                law_content.law_name_korean, law_content.law_name_hanja, law_content.law_abbr_name,
-                law_content.title_change_yn, law_content.korean_law_yn, law_content.chapter_section_no,
-                law_content.ministry_code, law_content.ministry_name, law_content.phone_number,
-                law_content.enforcement_date, law_content.revision_type, law_content.appendix_edit_yn,
-                law_content.promulgated_law_yn, law_content.department_name, law_content.department_phone,
-                law_content.joint_ministry_type, law_content.joint_type_code, law_content.joint_promulgation_no,
-                law_content.article_no, law_content.article_sub_no, law_content.article_yn,
-                law_content.article_title, law_content.article_enforcement_date, law_content.article_revision_type,
-                law_content.article_move_before, law_content.article_move_after, law_content.article_change_yn,
-                law_content.article_content, law_content.paragraph_no, law_content.paragraph_revision_type,
-                law_content.paragraph_revision_date_str, law_content.paragraph_content, law_content.item_no,
-                law_content.item_content, law_content.article_reference, law_content.addendum_promulgation_date,
-                law_content.addendum_promulgation_no, law_content.addendum_content, law_content.appendix_no,
-                law_content.appendix_sub_no, law_content.appendix_type, law_content.appendix_title,
-                law_content.appendix_form_file_link, law_content.appendix_hwp_filename, law_content.appendix_pdf_file_link,
-                law_content.appendix_pdf_filename, law_content.appendix_image_filename, law_content.appendix_content,
-                law_content.revision_content, law_content.revision_reason
+                getattr(law_content, 'law_id', None),
+                getattr(law_content, 'law_name_korean', None), 
+                getattr(law_content, 'article_content', None),
+                getattr(law_content, 'enforcement_date', None),
+                getattr(law_content, 'promulgation_date', None)
             ))
             
-            logger.debug("법령 본문 삽입 완료", law_id=law_content.law_id)
+            logger.debug("법령 본문 저장 완료", law_id=getattr(law_content, 'law_id', None))
             return cursor.rowcount > 0
             
         finally:
             cursor.close()
     
-    def get_law_content_by_id(self, law_id: int) -> List[LawContent]:
+    def get_law_content_by_id(self, law_id: str) -> List[LawContent]:
         """법령ID로 법령 본문 조회 (여러 조문이 있을 수 있음)"""
         try:
             with db_connection.get_connection() as conn:
@@ -238,7 +288,7 @@ class LegalDataRepository:
                     return self._save_law_article_with_connection(conn, law_article)
                     
         except Exception as e:
-            logger.error("법령 조항조목 저장 실패", law_id=law_article.law_id, error=str(e))
+            logger.error("법령 조항조목 저장 실패", law_id=getattr(law_article, 'law_id', None), error=str(e))
             return False
     
     def _save_law_article_with_connection(self, conn, law_article: LawArticle) -> bool:
@@ -247,47 +297,29 @@ class LegalDataRepository:
         try:
             insert_sql = """
             INSERT INTO law_articles (
-                law_key, law_id, promulgation_date, promulgation_no, language, law_name_korean,
-                law_name_hanja, law_type_code, law_type_name, title_change_yn, korean_law_yn,
-                chapter_section_no, ministry_code, ministry_name, phone_number, enforcement_date,
-                revision_type, proposal_type, decision_type, previous_law_name, article_enforcement_date,
-                article_enforcement_date_str, appendix_enforcement_date_str, appendix_edit_yn,
-                promulgated_law_yn, enforcement_date_edit_yn, article_no, article_yn, article_title,
-                article_enforcement_date_detail, article_move_before, article_move_after, article_change_yn,
-                article_content, paragraph_no, paragraph_content, item_no, item_content, subitem_no, subitem_content
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                law_key, law_id, article_no, article_title, article_content
+            ) VALUES (%s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                law_name_korean = VALUES(law_name_korean),
+                law_id = VALUES(law_id),
+                article_title = VALUES(article_title),
                 article_content = VALUES(article_content),
-                paragraph_content = VALUES(paragraph_content),
-                item_content = VALUES(item_content),
-                subitem_content = VALUES(subitem_content),
                 updated_at = CURRENT_TIMESTAMP
             """
             cursor.execute(insert_sql, (
-                law_article.law_key, law_article.law_id, law_article.promulgation_date,
-                law_article.promulgation_no, law_article.language, law_article.law_name_korean,
-                law_article.law_name_hanja, law_article.law_type_code, law_article.law_type_name,
-                law_article.title_change_yn, law_article.korean_law_yn, law_article.chapter_section_no,
-                law_article.ministry_code, law_article.ministry_name, law_article.phone_number,
-                law_article.enforcement_date, law_article.revision_type, law_article.proposal_type,
-                law_article.decision_type, law_article.previous_law_name, law_article.article_enforcement_date,
-                law_article.article_enforcement_date_str, law_article.appendix_enforcement_date_str,
-                law_article.appendix_edit_yn, law_article.promulgated_law_yn, law_article.enforcement_date_edit_yn,
-                law_article.article_no, law_article.article_yn, law_article.article_title,
-                law_article.article_enforcement_date_detail, law_article.article_move_before,
-                law_article.article_move_after, law_article.article_change_yn, law_article.article_content,
-                law_article.paragraph_no, law_article.paragraph_content, law_article.item_no,
-                law_article.item_content, law_article.subitem_no, law_article.subitem_content
+                getattr(law_article, 'law_key', None), 
+                getattr(law_article, 'law_id', None),
+                getattr(law_article, 'article_no', None),
+                getattr(law_article, 'article_title', None), 
+                getattr(law_article, 'article_content', None)
             ))
             
-            logger.debug("법령 조항조목 저장 완료", law_key=law_article.law_key, article_no=law_article.article_no)
+            logger.debug("법령 조항조목 저장 완료", law_key=getattr(law_article, 'law_key', None), article_no=getattr(law_article, 'article_no', None))
             return cursor.rowcount > 0
             
         finally:
             cursor.close()
     
-    def get_law_articles_by_law_key(self, law_key: int) -> List[LawArticle]:
+    def get_law_articles_by_law_key(self, law_key: str) -> List[LawArticle]:
         """법령키로 조항조목 목록 조회"""
         try:
             with db_connection.get_connection() as conn:
@@ -344,8 +376,8 @@ class LegalDataRepository:
             raise
     
     def update_batch_job_status(self, job_id: str, status: JobStatus, 
-                               processed_laws: int = 0, processed_articles: int = 0,
-                               error_count: int = 0, error_details: Optional[str] = None) -> bool:
+                               processed_laws: str = "0", processed_articles: str = "0",
+                               error_count: str = "0", error_details: Optional[str] = None) -> bool:
         """배치 작업 상태 업데이트"""
         try:
             with db_connection.get_connection() as conn:
@@ -360,8 +392,8 @@ class LegalDataRepository:
                 WHERE job_id = %s
                 """
                 cursor.execute(update_sql, (
-                    status.value, end_time, processed_laws, processed_articles,
-                    error_count, error_details, job_id
+                    status.value, end_time, str(processed_laws), str(processed_articles),
+                    str(error_count), error_details, job_id
                 ))
                 cursor.close()
                 
@@ -461,7 +493,7 @@ class LegalDataRepository:
             return None
     
     def update_sync_status(self, sync_type: str, sync_date: date, 
-                          total_laws_count: int = 0, total_articles_count: int = 0,
+                          total_laws_count: str = "0", total_articles_count: str = "0",
                           last_enforcement_date: Optional[date] = None) -> bool:
         """동기화 상태 업데이트"""
         try:
@@ -483,8 +515,8 @@ class LegalDataRepository:
                     WHERE sync_type = %s
                     """
                     cursor.execute(update_sql, (
-                        sync_date, last_enforcement_date, total_laws_count, 
-                        total_articles_count, sync_type
+                        sync_date, last_enforcement_date, str(total_laws_count), 
+                        str(total_articles_count), sync_type
                     ))
                 else:
                     # 삽입
@@ -495,7 +527,7 @@ class LegalDataRepository:
                     """
                     cursor.execute(insert_sql, (
                         sync_type, sync_date, last_enforcement_date,
-                        total_laws_count, total_articles_count
+                        str(total_laws_count), str(total_articles_count)
                     ))
                 
                 cursor.close()

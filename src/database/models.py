@@ -30,22 +30,22 @@ class LawList:
     target: Optional[str] = None  # 검색서비스 대상
     keyword: Optional[str] = None  # 검색어
     section: Optional[str] = None  # 검색범위
-    total_cnt: Optional[int] = None  # 검색건수
-    page: Optional[int] = None  # 결과페이지번호
-    law_id: Optional[int] = None  # 법령ID
-    law_serial_no: Optional[int] = None  # 법령일련번호
+    total_cnt: Optional[str] = None  # 검색건수
+    page: Optional[str] = None  # 결과페이지번호
+    law_id: Optional[str] = None  # 법령ID
+    law_serial_no: Optional[str] = None  # 법령일련번호
     current_history_code: Optional[str] = None  # 현행연혁코드
     law_name_korean: Optional[str] = None  # 법령명한글
     law_abbr_name: Optional[str] = None  # 법령약칭명
-    promulgation_date: Optional[int] = None  # 공포일자 (YYYYMMDD)
-    promulgation_no: Optional[int] = None  # 공포번호
+    promulgation_date: Optional[str] = None  # 공포일자 (YYYYMMDD)
+    promulgation_no: Optional[str] = None  # 공포번호
     revision_type: Optional[str] = None  # 제개정구분명
     ministry_name: Optional[str] = None  # 소관부처명
-    ministry_code: Optional[int] = None  # 소관부처코드
+    ministry_code: Optional[str] = None  # 소관부처코드
     law_type_name: Optional[str] = None  # 법령구분명
     joint_ministry_type: Optional[str] = None  # 공동부령구분
     joint_promulgation_no: Optional[str] = None  # 공포번호(공동부령의 공포번호)
-    enforcement_date: Optional[int] = None  # 시행일자 (YYYYMMDD)
+    enforcement_date: Optional[str] = None  # 시행일자 (YYYYMMDD)
     self_other_law_yn: Optional[str] = None  # 자법타법여부
     law_detail_link: Optional[str] = None  # 법령상세링크
     # 내부 관리 필드
@@ -57,9 +57,9 @@ class LawContent:
     """법령 본문 조회 모델 (API 응답 기반)"""
     id: Optional[int] = None
     # 기본 법령 정보
-    law_id: Optional[int] = None  # 법령ID
-    promulgation_date: Optional[int] = None  # 공포일자 (YYYYMMDD)
-    promulgation_no: Optional[int] = None  # 공포번호
+    law_id: Optional[str] = None  # 법령ID
+    promulgation_date: Optional[str] = None  # 공포일자 (YYYYMMDD)
+    promulgation_no: Optional[str] = None  # 공포번호
     language: Optional[str] = None  # 언어종류
     law_type: Optional[str] = None  # 법종구분
     law_type_code: Optional[str] = None  # 법종구분코드
@@ -68,11 +68,11 @@ class LawContent:
     law_abbr_name: Optional[str] = None  # 법령명약칭
     title_change_yn: Optional[str] = None  # 제명변경여부
     korean_law_yn: Optional[str] = None  # 한글법령여부
-    chapter_section_no: Optional[int] = None  # 편장절관 일련번호
-    ministry_code: Optional[int] = None  # 소관부처코드
+    chapter_section_no: Optional[str] = None  # 편장절관 일련번호
+    ministry_code: Optional[str] = None  # 소관부처코드
     ministry_name: Optional[str] = None  # 소관부처명
     phone_number: Optional[str] = None  # 전화번호
-    enforcement_date: Optional[int] = None  # 시행일자 (YYYYMMDD)
+    enforcement_date: Optional[str] = None  # 시행일자 (YYYYMMDD)
     revision_type: Optional[str] = None  # 제개정구분
     appendix_edit_yn: Optional[str] = None  # 별표편집여부
     promulgated_law_yn: Optional[str] = None  # 공포법령여부
@@ -83,36 +83,36 @@ class LawContent:
     joint_promulgation_no: Optional[str] = None  # 공포번호(공동부령의 공포번호)
     
     # 조문 정보
-    article_no: Optional[int] = None  # 조문번호
-    article_sub_no: Optional[int] = None  # 조문가지번호
+    article_no: Optional[str] = None  # 조문번호
+    article_sub_no: Optional[str] = None  # 조문가지번호
     article_yn: Optional[str] = None  # 조문여부
     article_title: Optional[str] = None  # 조문제목
-    article_enforcement_date: Optional[int] = None  # 조문시행일자
+    article_enforcement_date: Optional[str] = None  # 조문시행일자
     article_revision_type: Optional[str] = None  # 조문제개정유형
-    article_move_before: Optional[int] = None  # 조문이동이전
-    article_move_after: Optional[int] = None  # 조문이동이후
+    article_move_before: Optional[str] = None  # 조문이동이전
+    article_move_after: Optional[str] = None  # 조문이동이후
     article_change_yn: Optional[str] = None  # 조문변경여부
     article_content: Optional[str] = None  # 조문내용
     
     # 항 정보
-    paragraph_no: Optional[int] = None  # 항번호
+    paragraph_no: Optional[str] = None  # 항번호
     paragraph_revision_type: Optional[str] = None  # 항제개정유형
     paragraph_revision_date_str: Optional[str] = None  # 항제개정일자문자열
     paragraph_content: Optional[str] = None  # 항내용
     
     # 호 정보
-    item_no: Optional[int] = None  # 호번호
+    item_no: Optional[str] = None  # 호번호
     item_content: Optional[str] = None  # 호내용
     
     # 참고자료 및 부칙
     article_reference: Optional[str] = None  # 조문참고자료
-    addendum_promulgation_date: Optional[int] = None  # 부칙공포일자
-    addendum_promulgation_no: Optional[int] = None  # 부칙공포번호
+    addendum_promulgation_date: Optional[str] = None  # 부칙공포일자
+    addendum_promulgation_no: Optional[str] = None  # 부칙공포번호
     addendum_content: Optional[str] = None  # 부칙내용
     
     # 별표 정보
-    appendix_no: Optional[int] = None  # 별표번호
-    appendix_sub_no: Optional[int] = None  # 별표가지번호
+    appendix_no: Optional[str] = None  # 별표번호
+    appendix_sub_no: Optional[str] = None  # 별표가지번호
     appendix_type: Optional[str] = None  # 별표구분
     appendix_title: Optional[str] = None  # 별표제목
     appendix_form_file_link: Optional[str] = None  # 별표서식파일링크
@@ -135,10 +135,10 @@ class LawArticle:
     """현행법령 조항조목 조회 모델 (API 응답 기반)"""
     id: Optional[int] = None
     # 기본 법령 정보
-    law_key: Optional[int] = None  # 법령키
-    law_id: Optional[int] = None  # 법령ID
-    promulgation_date: Optional[int] = None  # 공포일자 (YYYYMMDD)
-    promulgation_no: Optional[int] = None  # 공포번호
+    law_key: Optional[str] = None  # 법령키
+    law_id: Optional[str] = None  # 법령ID
+    promulgation_date: Optional[str] = None  # 공포일자 (YYYYMMDD)
+    promulgation_no: Optional[str] = None  # 공포번호
     language: Optional[str] = None  # 언어 구분
     law_name_korean: Optional[str] = None  # 법령명_한글
     law_name_hanja: Optional[str] = None  # 법령명_한자
@@ -146,11 +146,11 @@ class LawArticle:
     law_type_name: Optional[str] = None  # 법종구분명
     title_change_yn: Optional[str] = None  # 제명변경여부
     korean_law_yn: Optional[str] = None  # 한글법령여부
-    chapter_section_no: Optional[int] = None  # 편장절관
-    ministry_code: Optional[int] = None  # 소관부처 코드
+    chapter_section_no: Optional[str] = None  # 편장절관
+    ministry_code: Optional[str] = None  # 소관부처 코드
     ministry_name: Optional[str] = None  # 소관부처명
     phone_number: Optional[str] = None  # 전화번호
-    enforcement_date: Optional[int] = None  # 시행일자 (YYYYMMDD)
+    enforcement_date: Optional[str] = None  # 시행일자 (YYYYMMDD)
     revision_type: Optional[str] = None  # 제개정구분명
     proposal_type: Optional[str] = None  # 제안구분
     decision_type: Optional[str] = None  # 의결구분
@@ -163,19 +163,19 @@ class LawArticle:
     enforcement_date_edit_yn: Optional[str] = None  # 시행일기준편집여부
     
     # 조문 정보
-    article_no: Optional[int] = None  # 조문번호
+    article_no: Optional[str] = None  # 조문번호
     article_yn: Optional[str] = None  # 조문여부
     article_title: Optional[str] = None  # 조문제목
     article_enforcement_date_detail: Optional[str] = None  # 조문시행일자
-    article_move_before: Optional[int] = None  # 조문이동이전번호
-    article_move_after: Optional[int] = None  # 조문이동이후번호
+    article_move_before: Optional[str] = None  # 조문이동이전번호
+    article_move_after: Optional[str] = None  # 조문이동이후번호
     article_change_yn: Optional[str] = None  # 조문변경여부
     article_content: Optional[str] = None  # 조문내용
     
     # 항, 호, 목 정보
-    paragraph_no: Optional[int] = None  # 항번호
+    paragraph_no: Optional[str] = None  # 항번호
     paragraph_content: Optional[str] = None  # 항내용
-    item_no: Optional[int] = None  # 호번호
+    item_no: Optional[str] = None  # 호번호
     item_content: Optional[str] = None  # 호내용
     subitem_no: Optional[str] = None  # 목번호
     subitem_content: Optional[str] = None  # 목내용
@@ -198,9 +198,9 @@ class BatchJob:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     last_sync_date: Optional[date] = None
-    processed_laws: int = 0
-    processed_articles: int = 0
-    error_count: int = 0
+    processed_laws: str = "0"
+    processed_articles: str = "0"
+    error_count: str = "0"
     error_details: Optional[str] = None
     created_at: Optional[datetime] = None
     
@@ -233,8 +233,8 @@ class SyncStatus:
     sync_type: SyncType = SyncType.INCREMENTAL
     last_sync_date: Optional[date] = None
     last_enforcement_date: Optional[date] = None
-    total_laws_count: int = 0
-    total_articles_count: int = 0
+    total_laws_count: str = "0"
+    total_articles_count: str = "0"
     updated_at: Optional[datetime] = None
     
     def __post_init__(self):
@@ -411,9 +411,9 @@ def dict_to_batch_job(data: dict) -> BatchJob:
         start_time=data.get('start_time'),
         end_time=data.get('end_time'),
         last_sync_date=data.get('last_sync_date'),
-        processed_laws=data.get('processed_laws', 0),
-        processed_articles=data.get('processed_articles', 0),
-        error_count=data.get('error_count', 0),
+        processed_laws=str(data.get('processed_laws', 0)),
+        processed_articles=str(data.get('processed_articles', 0)),
+        error_count=str(data.get('error_count', 0)),
         error_details=data.get('error_details'),
         created_at=data.get('created_at')
     )
@@ -425,7 +425,7 @@ def dict_to_sync_status(data: dict) -> SyncStatus:
         sync_type=SyncType(data.get('sync_type', 'INCREMENTAL')),
         last_sync_date=data.get('last_sync_date'),
         last_enforcement_date=data.get('last_enforcement_date'),
-        total_laws_count=data.get('total_laws_count', 0),
-        total_articles_count=data.get('total_articles_count', 0),
+        total_laws_count=str(data.get('total_laws_count', 0)),
+        total_articles_count=str(data.get('total_articles_count', 0)),
         updated_at=data.get('updated_at')
     )
