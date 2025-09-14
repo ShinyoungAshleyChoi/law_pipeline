@@ -312,15 +312,15 @@ class LegalDataConsumer:
                         event_id=kafka_message.event_id,
                         raw_data=law_data)
             
-            # 법령 데이터 변환 - 실제 Mock API 응답 필드명 사용
+            # 법령 데이터 변환 - 실제 전송되는 영문 필드명 사용
             logger.info("법령 데이터 변환 시작")
             law_list = LawList(
-                law_id=law_data.get('법령ID'),  # Mock 데이터의 실제 필드명
-                law_name_korean=law_data.get('법령명'),
-                enforcement_date=law_data.get('시행일자'),
-                promulgation_date=law_data.get('공포일자'),
-                law_type_name=law_data.get('법령구분'),
-                ministry_name=law_data.get('소관부처')
+                law_id=law_data.get('law_id'),  # 실제 전송되는 영문 필드명
+                law_name_korean=law_data.get('law_name'),
+                enforcement_date=law_data.get('enforcement_date'),
+                promulgation_date=law_data.get('promulgation_date'),
+                law_type_name=law_data.get('law_type'),
+                ministry_name=law_data.get('ministry_name')
             )
             
             logger.info("변환된 법령 데이터", 
@@ -339,14 +339,16 @@ class LegalDataConsumer:
                 if success:
                     self._stats['laws_stored'] += 1
                     logger.info("법령 저장 성공", 
-                               law_id=law_data.get('법령ID'),
-                               event_id=kafka_message.event_id)
-                else:
-                    error_msg = f"법령 저장 실패 law_data={law_data}"
-                    logger.error("법령 저장이 실패함", 
-                               law_id=law_data.get('법령ID'),
+                               law_id=law_data.get('law_id'),
                                event_id=kafka_message.event_id,
-                               law_data_keys=list(law_data.keys()) if isinstance(law_data, dict) else 'not_dict')
+                               target_db=self.target_db_host)
+                else:
+                    error_msg = f"법령 저장 실패 - 데이터베이스 저장 실패. law_data={law_data}"
+                    logger.error(error_msg, 
+                               law_id=law_data.get('law_id'),
+                               event_id=kafka_message.event_id,
+                               target_db=self.target_db_host,
+                               law_data=law_data)
                     raise Exception(error_msg)
                     
         except Exception as e:
@@ -363,13 +365,13 @@ class LegalDataConsumer:
         try:
             content_data = kafka_message.data
             
-            # 법령 본문 데이터 변환 - 실제 Mock API 응답 필드명 사용  
+            # 법령 본문 데이터 변환 - 실제 전송되는 영문 필드명 사용  
             law_content = LawContent(
-                law_id=content_data.get('법령ID'),  # Mock 데이터의 실제 필드명
-                law_name_korean=content_data.get('법령명'),
-                article_content=content_data.get('법령내용'),  # 'content'가 아니라 '법령내용'
-                enforcement_date=content_data.get('시행일자'),
-                promulgation_date=content_data.get('공포일자')
+                law_id=content_data.get('law_id'),  # 실제 전송되는 영문 필드명
+                law_name_korean=content_data.get('law_name'),
+                article_content=content_data.get('content'),  # 'content' 필드 사용
+                enforcement_date=content_data.get('enforcement_date'),
+                promulgation_date=content_data.get('promulgation_date')
             )
             
             # 데이터베이스 저장
@@ -378,7 +380,9 @@ class LegalDataConsumer:
                 
                 if success:
                     self._stats['contents_stored'] += 1
-                    logger.info("법령 본문 저장 완료", law_id=content_data.get('law_id'))
+                    logger.info("법령 본문 저장 완료", 
+                               law_id=content_data.get('law_id'),
+                               target_db=self.target_db_host)
                 else:
                     raise Exception("법령 본문 저장 실패")
                     
