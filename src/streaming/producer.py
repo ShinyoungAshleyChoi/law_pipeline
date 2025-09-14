@@ -15,7 +15,6 @@ from streaming.models import (
     KafkaMessage, LawEvent, ContentEvent, ArticleEvent,
     BatchStatusEvent, EventType
 )
-from api.client import api_client
 from api.models import LawListItem, LawContent, LawArticle
 from logging_config import get_logger
 
@@ -209,67 +208,6 @@ class LegalDataProducer:
                          law_id=law.law_id,
                          error=str(e))
             return False
-
-    async def collect_and_send_laws(self, last_sync_date: Optional[date] = None,
-                                    correlation_id: Optional[str] = None) -> Dict[str, Any]:
-        """법령 수집 및 전송"""
-        logger.info("법령 데이터 수집 및 전송 시작", last_sync_date=last_sync_date)
-
-        stats = {
-            'total_laws': 0,
-            'sent_laws': 0,
-            'failed_laws': 0,
-            'start_time': datetime.now(),
-            'errors': []
-        }
-
-        try:
-            # 1. 법령 목록 수집
-            laws = api_client.collect_law_list(last_sync_date)
-            stats['total_laws'] = len(laws)
-
-            logger.info("법령 목록 수집 완료", count=len(laws))
-
-            # 2. 각 법령별로 처리
-            for law in laws:
-                try:
-                    # 법령 정보 전송
-                    if await self.send_law_event(law, correlation_id):
-                        stats['sent_laws'] += 1
-                    else:
-                        stats['failed_laws'] += 1
-                        continue
-
-                    # 진행률 로깅 (10개마다)
-                    if stats['sent_laws'] % 10 == 0:
-                        logger.info("법령 처리 진행률",
-                                    processed=stats['sent_laws'],
-                                    total=stats['total_laws'],
-                                    progress_pct=round((stats['sent_laws'] / stats['total_laws']) * 100, 1))
-
-                except Exception as e:
-                    logger.error("법령 처리 실패",
-                                 law_id=law.law_id,
-                                 error=str(e))
-                    stats['failed_laws'] += 1
-                    stats['errors'].append(f"Law processing failed for law_id {law.law_id}: {str(e)}")
-                    continue
-
-            # 최종 통계
-            stats['end_time'] = datetime.now()
-            stats['duration_seconds'] = (stats['end_time'] - stats['start_time']).total_seconds()
-
-            logger.info("법령 데이터 수집 및 전송 완료",
-                        sent_laws=stats['sent_laws'],
-                        failed_laws=stats['failed_laws'],
-                        duration_seconds=stats['duration_seconds'])
-
-            return stats
-
-        except Exception as e:
-            logger.error("법령 데이터 수집 및 전송 실패", error=str(e))
-            stats['errors'].append(f"Global error: {str(e)}")
-            return stats
 
     async def send_batch_status_event(self, job_id: str, job_type: str,
                                       event_type: EventType,

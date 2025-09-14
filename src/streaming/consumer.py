@@ -28,11 +28,12 @@ logger = get_logger(__name__)
 class LegalDataConsumer:
     """법제처 데이터 Kafka Consumer"""
     
-    def __init__(self, group_id: str = "legal-data-writers"):
+    def __init__(self, group_id: str = "legal-data-writers", target_db_host: str = "mysql-green"):
         self.consumer: Optional[KafkaConsumer] = None
         self.config = kafka_config
         self.group_id = group_id
-        self.repository = LegalDataRepository()
+        self.target_db_host = target_db_host  # 타겟 DB 호스트
+        self.repository = LegalDataRepository(target_db_host=target_db_host)  # 타겟 DB 지정
         self.running = False
         self._stats = {
             'messages_processed': 0,
@@ -62,6 +63,12 @@ class LegalDataConsumer:
                 'group_id': self.group_id,
                 'value_deserializer': lambda m: json.loads(m.decode('utf-8')),
                 'key_deserializer': lambda m: m.decode('utf-8') if m else None,
+                'consumer_timeout_ms': 10000,  # 10초 후 StopIteration 발생
+                'session_timeout_ms': 30000,   # 30초 세션 타임아웃
+                'heartbeat_interval_ms': 3000, # 3초 하트비트
+                'max_poll_records': 10,        # 한 번에 최대 10개 메시지만
+                'fetch_min_bytes': 1,          # 최소 1바이트만 있어도 반환
+                'fetch_max_wait_ms': 1000,     # 최대 1초 대기
                 **self.config.consumer_config
             }
             
@@ -107,49 +114,95 @@ class LegalDataConsumer:
         finally:
             await self.stop()
     
-    async def consume_messages(self, max_messages: Optional[int] = None) -> None:
-        """메시지 소비"""
+    async def consume_messages(self, max_messages: Optional[int] = None, timeout_seconds: int = 300) -> None:
+        """메시지 소비 - 타임아웃과 빈 큐 감지 추가"""
         if not self.consumer or not self.running:
             raise RuntimeError("Consumer가 시작되지 않았습니다")
         
-        logger.info("메시지 소비 시작", max_messages=max_messages)
+        logger.info("메시지 소비 시작", max_messages=max_messages, timeout_seconds=timeout_seconds)
         
         processed_count = 0
+        empty_polls = 0
+        max_empty_polls = 10  # 연속 빈 폴링 허용 횟수
+        start_time = time.time()
         
         try:
-            for message in self.consumer:
-                if not self.running:
-                    break
-                
+            while self.running:
+                # 최대 메시지 수 체크
                 if max_messages and processed_count >= max_messages:
                     logger.info("최대 메시지 수 도달", processed=processed_count)
                     break
                 
-                try:
-                    await self._process_message(message)
-                    processed_count += 1
+                # 타임아웃 체크
+                if time.time() - start_time > timeout_seconds:
+                    logger.info("타임아웃 도달", 
+                               processed=processed_count, 
+                               timeout_seconds=timeout_seconds)
+                    break
+                
+                # poll 메서드로 메시지 가져오기 (타임아웃 설정)
+                message_batch = self.consumer.poll(timeout_ms=5000)  # 5초 타임아웃
+                
+                if not message_batch:
+                    empty_polls += 1
+                    logger.info("빈 배치 폴링", empty_polls=empty_polls, max_empty_polls=max_empty_polls)
                     
-                    # 주기적으로 커밋
-                    if processed_count % 10 == 0:
-                        self.consumer.commit()
-                        self._stats['messages_committed'] += 10
-                        logger.info("주기적 커밋", processed=processed_count)
+                    if empty_polls >= max_empty_polls:
+                        logger.info("연속 빈 폴링으로 컨슈밍 종료", 
+                                   processed=processed_count,
+                                   empty_polls=empty_polls)
+                        break
                     
-                except Exception as e:
-                    logger.error("메시지 처리 실패",
-                               topic=message.topic,
-                               partition=message.partition,
-                               offset=message.offset,
-                               error=str(e))
-                    
-                    await self._handle_message_error(message, e)
-                    self._stats['messages_failed'] += 1
+                    # 잠시 대기 후 재시도
+                    await asyncio.sleep(1)
                     continue
+                
+                # 메시지가 있으면 빈 폴링 카운터 리셋
+                empty_polls = 0
+                
+                # 배치 내 모든 메시지 처리
+                for topic_partition, messages in message_batch.items():
+                    for message in messages:
+                        if not self.running:
+                            break
+                        
+                        if max_messages and processed_count >= max_messages:
+                            logger.info("배치 처리 중 최대 메시지 수 도달", processed=processed_count)
+                            break
+                        
+                        try:
+                            await self._process_message(message)
+                            processed_count += 1
+                            
+                            # 주기적으로 커밋
+                            if processed_count % 10 == 0:
+                                self.consumer.commit()
+                                self._stats['messages_committed'] += 10
+                                logger.info("주기적 커밋", processed=processed_count)
+                            
+                        except Exception as e:
+                            logger.error("메시지 처리 실패",
+                                       topic=message.topic,
+                                       partition=message.partition,
+                                       offset=message.offset,
+                                       error=str(e))
+                            
+                            await self._handle_message_error(message, e)
+                            self._stats['messages_failed'] += 1
+                            continue
+                    
+                    if max_messages and processed_count >= max_messages:
+                        break
+                
+                if max_messages and processed_count >= max_messages:
+                    break
             
             # 최종 커밋
             if processed_count > 0:
                 self.consumer.commit()
-                logger.info("메시지 소비 완료", processed=processed_count)
+                logger.info("메시지 소비 완료", 
+                           processed=processed_count,
+                           duration=time.time() - start_time)
                 
         except KeyboardInterrupt:
             logger.info("사용자 중단 요청")

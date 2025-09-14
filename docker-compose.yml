@@ -233,7 +233,7 @@ services:
     volumes:
       - mysql_blue_data_v2:/var/lib/mysql
       - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./docker/mysql/init-blue.sql:/docker-entrypoint-initdb.d/02-init-blue.sql:ro
+      - ./docker/mysql/init-common.sql:/docker-entrypoint-initdb.d/02-init-common.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -264,7 +264,7 @@ services:
     volumes:
       - mysql_green_data_v2:/var/lib/mysql
       - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./docker/mysql/init-blue.sql:/docker-entrypoint-initdb.d/02-init-blue.sql:ro
+      - ./docker/mysql/init-common.sql:/docker-entrypoint-initdb.d/02-init-common.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -463,43 +463,7 @@ services:
     networks:
       - legal-network
 
-  # ==================== Monitoring ====================
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
-      - '--storage.tsdb.retention.time=30d'
-    restart: unless-stopped
-    networks:
-      - legal-network
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: legal_grafana_2024!
-      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-    networks:
-      - legal-network
 
 # ==================== Networks ====================
 networks:
@@ -536,9 +500,3 @@ volumes:
     name: postgres_data
   airflow_logs:
     name: airflow_logs
-  
-  # Monitoring
-  prometheus_data:
-    name: prometheus_data
-  grafana_data:
-    name: grafana_data

@@ -230,6 +230,32 @@ CREATE TABLE IF NOT EXISTS sync_status (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci 
 COMMENT='동기화 상태 추적 - 증분 업데이트 기준점 관리';
 
+-- 블루그린 배포 상태 관리 테이블
+CREATE TABLE IF NOT EXISTS blue_green_config (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    config_key VARCHAR(100) NOT NULL COMMENT '설정 키',
+    config_value VARCHAR(500) NOT NULL COMMENT '설정 값',
+    description TEXT COMMENT '설정 설명',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by VARCHAR(100) COMMENT '수정자 (배치명, 사용자명)',
+    
+    -- 제약조건
+    UNIQUE KEY unique_config_key (config_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci 
+COMMENT='블루그린 배포 상태 및 환경 설정 관리';
+
+-- 블루그린 초기 설정 데이터 삽입
+INSERT INTO blue_green_config (config_key, config_value, description, updated_by) VALUES
+('ACTIVE_DATABASE', 'BLUE', '현재 활성화된 데이터베이스 환경 (BLUE/GREEN)', 'SYSTEM'),
+('SWITCH_TIMESTAMP', '', '마지막 블루그린 스위칭 시간', 'SYSTEM'),
+('DATA_VALIDATION_STATUS', 'PENDING', '데이터 검증 상태 (PENDING/VALID/INVALID)', 'SYSTEM'),
+('BLUE_RECORD_COUNT', '0', 'Blue 환경의 총 레코드 수', 'SYSTEM'),
+('GREEN_RECORD_COUNT', '0', 'Green 환경의 총 레코드 수', 'SYSTEM'),
+('SYNC_STATUS', 'IDLE', '동기화 상태 (IDLE/SYNCING/COMPLETED/FAILED)', 'SYSTEM')
+ON DUPLICATE KEY UPDATE 
+    description=VALUES(description), 
+    updated_by=VALUES(updated_by);
+
 -- 물리적 외래키 제약조건 없음 (외부 API 데이터 불완전성 대응)
 -- 논리적 관계: articles.law_master_no → laws.law_master_no
 -- 논리적 관계: law_versions.law_master_no → laws.law_master_no

@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import date, datetime
 import uuid
 from contextlib import contextmanager
+import mysql.connector
 from mysql.connector import Error as MySQLError
 import structlog
 
@@ -20,9 +21,10 @@ logger = get_logger(__name__)
 class LegalDataRepository:
     """법령 데이터 저장소 클래스 (실제 API 응답 기반)"""
     
-    def __init__(self):
+    def __init__(self, target_db_host: str = "mysql-green"):
         self._current_connection = None
         self._transaction_active = False
+        self.target_db_host = target_db_host  # 타겟 DB 호스트 저장
     
     @contextmanager
     def transaction(self):
@@ -33,11 +35,12 @@ class LegalDataRepository:
             yield
             return
             
-        logger.debug("새 트랜잭션 시작 시도")
+        logger.debug("새 트랜잭션 시작 시도", target_db=self.target_db_host)
         
         try:
-            with db_connection.get_connection() as conn:
-                logger.debug("데이터베이스 연결 획득 성공")
+            # 타겟 DB 호스트로 연결 생성
+            with self._get_target_connection() as conn:
+                logger.debug("데이터베이스 연결 획득 성공", target_db=self.target_db_host)
                 self._current_connection = conn
                 self._transaction_active = True
                 
@@ -52,6 +55,7 @@ class LegalDataRepository:
                     logger.error("트랜잭션 처리 중 에러 발생", 
                                error=str(e), 
                                error_type=type(e).__name__,
+                               target_db=self.target_db_host,
                                connection_active=conn.is_connected() if hasattr(conn, 'is_connected') else 'unknown')
                     
                     try:
@@ -70,14 +74,56 @@ class LegalDataRepository:
         except Exception as e:
             logger.error("데이터베이스 연결 획득 실패", 
                        error=str(e), 
-                       error_type=type(e).__name__)
+                       error_type=type(e).__name__,
+                       target_db=self.target_db_host)
             raise
+    
+    @contextmanager
+    def _get_target_connection(self):
+        """타겟 DB로의 직접 연결 생성"""
+        import mysql.connector
+        
+        # 타겟 DB별 연결 설정
+        db_config = {
+            'user': 'legal_user',
+            'password': 'legal_pass_2024!',
+            'database': 'legal_db',
+            'host': self.target_db_host,
+            'port': 3306,
+            'charset': 'utf8mb4',
+            'autocommit': False,
+            'connection_timeout': 30
+        }
+        
+        connection = None
+        try:
+            logger.debug("타겟 DB 직접 연결 시작", target_db=self.target_db_host)
+            connection = mysql.connector.connect(**db_config)
+            logger.debug("타겟 DB 연결 성공", target_db=self.target_db_host)
+            yield connection
+            
+        except mysql.connector.Error as e:
+            logger.error("타겟 DB 연결 실패", 
+                        target_db=self.target_db_host,
+                        mysql_error=str(e))
+            if connection:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+            raise
+            
+        finally:
+            if connection and connection.is_connected():
+                connection.close()
+                logger.debug("타겟 DB 연결 종료", target_db=self.target_db_host)
     
     def _get_connection(self):
         """현재 연결 반환 (트랜잭션 중이면 현재 연결, 아니면 새 연결)"""
         if self._current_connection:
             return self._current_connection
-        return db_connection.get_connection()
+        # 기존 db_connection 대신 타겟 DB로 직접 연결
+        return self._get_target_connection()
     
     # ==================== 법령 목록 CRUD 연산 ====================
     
@@ -85,7 +131,8 @@ class LegalDataRepository:
         """법령 목록 데이터 저장/업데이트"""
         logger.debug("법령 목록 저장 시작", 
                     law_id=getattr(law_list, 'law_id', None),
-                    law_name=getattr(law_list, 'law_name_korean', None))
+                    law_name=getattr(law_list, 'law_name_korean', None),
+                    target_db=self.target_db_host)
         
         # 입력 데이터 검증
         if not hasattr(law_list, 'law_id') or not law_list.law_id:
@@ -98,14 +145,15 @@ class LegalDataRepository:
                 return self._save_law_list_with_connection(self._current_connection, law_list)
             else:
                 logger.debug("새 연결로 저장")
-                with db_connection.get_connection() as conn:
+                with self._get_target_connection() as conn:
                     return self._save_law_list_with_connection(conn, law_list)
                     
-        except MySQLError as e:
+        except mysql.connector.Error as e:
             logger.error("MySQL 에러 발생", 
                         law_id=getattr(law_list, 'law_id', None), 
                         mysql_error_code=e.errno,
                         mysql_error_msg=e.msg,
+                        target_db=self.target_db_host,
                         data=vars(law_list))
             return False
         except Exception as e:
@@ -113,6 +161,7 @@ class LegalDataRepository:
                         law_id=getattr(law_list, 'law_id', None), 
                         data=vars(law_list), 
                         error=str(e),
+                        target_db=self.target_db_host,
                         error_type=type(e).__name__)
             return False
     
@@ -175,11 +224,12 @@ class LegalDataRepository:
             logger.debug("저장 결과", success=success, rowcount=cursor.rowcount)
             return success
             
-        except MySQLError as e:
+        except mysql.connector.Error as e:
             logger.error("MySQL 쿼리 실행 에러", 
                         law_id=getattr(law_list, 'law_id', None),
                         mysql_error_code=e.errno,
                         mysql_error_msg=e.msg,
+                        target_db=self.target_db_host,
                         sql_state=getattr(e, 'sqlstate', None))
             raise
         except Exception as e:
@@ -219,11 +269,14 @@ class LegalDataRepository:
             if self._transaction_active:
                 return self._save_law_content_with_connection(self._current_connection, law_content)
             else:
-                with db_connection.get_connection() as conn:
+                with self._get_target_connection() as conn:
                     return self._save_law_content_with_connection(conn, law_content)
                     
         except Exception as e:
-            logger.error("법령 본문 저장 실패", law_id=getattr(law_content, 'law_id', None), error=str(e))
+            logger.error("법령 본문 저장 실패", 
+                        law_id=getattr(law_content, 'law_id', None), 
+                        target_db=self.target_db_host,
+                        error=str(e))
             return False
     
     def _save_law_content_with_connection(self, conn, law_content: LawContent) -> bool:
@@ -253,7 +306,9 @@ class LegalDataRepository:
                 getattr(law_content, 'promulgation_date', None)
             ))
             
-            logger.debug("법령 본문 저장 완료", law_id=getattr(law_content, 'law_id', None))
+            logger.debug("법령 본문 저장 완료", 
+                        law_id=getattr(law_content, 'law_id', None),
+                        target_db=self.target_db_host)
             return cursor.rowcount > 0
             
         finally:
@@ -284,11 +339,14 @@ class LegalDataRepository:
             if self._transaction_active:
                 return self._save_law_article_with_connection(self._current_connection, law_article)
             else:
-                with db_connection.get_connection() as conn:
+                with self._get_target_connection() as conn:
                     return self._save_law_article_with_connection(conn, law_article)
                     
         except Exception as e:
-            logger.error("법령 조항조목 저장 실패", law_id=getattr(law_article, 'law_id', None), error=str(e))
+            logger.error("법령 조항조목 저장 실패", 
+                        law_id=getattr(law_article, 'law_id', None),
+                        target_db=self.target_db_host, 
+                        error=str(e))
             return False
     
     def _save_law_article_with_connection(self, conn, law_article: LawArticle) -> bool:
@@ -313,7 +371,10 @@ class LegalDataRepository:
                 getattr(law_article, 'article_content', None)
             ))
             
-            logger.debug("법령 조항조목 저장 완료", law_key=getattr(law_article, 'law_key', None), article_no=getattr(law_article, 'article_no', None))
+            logger.debug("법령 조항조목 저장 완료", 
+                        law_key=getattr(law_article, 'law_key', None), 
+                        article_no=getattr(law_article, 'article_no', None),
+                        target_db=self.target_db_host)
             return cursor.rowcount > 0
             
         finally:

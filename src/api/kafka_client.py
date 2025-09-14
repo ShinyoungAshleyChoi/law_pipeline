@@ -3,7 +3,6 @@ from typing import Optional, Dict, Any
 from datetime import date, datetime
 import uuid
 
-from api.client import api_client
 from streaming.producer import LegalDataProducer
 from streaming.models import EventType
 from logging_config import get_logger
@@ -15,7 +14,6 @@ class KafkaIntegratedAPIClient:
     """Kafka와 통합된 법제처 API 클라이언트"""
 
     def __init__(self):
-        self.api_client = api_client
         self.kafka_producer = LegalDataProducer()
         self._session_active = False
 
@@ -132,64 +130,6 @@ class KafkaIntegratedAPIClient:
             'timestamp': datetime.now().isoformat()
         }
 
-    # 기존 API Client 메서드들을 프록시
-    def collect_law_list(self, last_sync_date: Optional[date] = None):
-        """법령 목록 조회 (기존 API 메서드)"""
-        return self.api_client.collect_law_list(last_sync_date)
-
-    def collect_law_content(self, law_id: str):
-        """법령 본문 조회 (기존 API 메서드)"""
-        return self.api_client.collect_law_content(law_id)
-
-    def collect_law_articles(self, law_master_no: str):
-        """법령 조항 조회 (기존 API 메서드)"""
-        return self.api_client.collect_law_articles(law_master_no)
-
-    def collect_incremental_updates(self, last_sync_date: date):
-        """증분 업데이트 조회 (기존 API 메서드)"""
-        return self.api_client.collect_incremental_updates(last_sync_date)
-
 
 # 전역 통합 클라이언트 인스턴스
 kafka_integrated_client = KafkaIntegratedAPIClient()
-
-
-async def main():
-    """CLI 실행용 메인 함수"""
-    import argparse
-    import json
-
-    parser = argparse.ArgumentParser(description='Kafka 통합 법제처 API 클라이언트')
-    parser.add_argument('--action', choices=['collect', 'health'], default='collect',
-                        help='실행할 작업')
-    parser.add_argument('--last-sync-date', type=str,
-                        help='마지막 동기화 날짜 (YYYY-MM-DD)')
-    parser.add_argument('--batch-size', type=int, default=50,
-                        help='배치 크기')
-
-    args = parser.parse_args()
-
-    async with kafka_integrated_client:
-        if args.action == 'health':
-            # 헬스체크
-            health = await kafka_integrated_client.health_check()
-            print(json.dumps(health, indent=2, ensure_ascii=False, default=str))
-
-        elif args.action == 'collect':
-            # 데이터 수집
-            last_sync_date = None
-            if args.last_sync_date:
-                last_sync_date = datetime.strptime(args.last_sync_date, '%Y-%m-%d').date()
-
-            stats = await kafka_integrated_client.collect_and_publish_laws(
-                last_sync_date=last_sync_date,
-                batch_size=args.batch_size
-            )
-
-            print(json.dumps(stats, indent=2, ensure_ascii=False, default=str))
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())

@@ -212,7 +212,7 @@ docker exec -it kafka kafka-console-consumer \
 
 - [스크립트 상세 사용법](src/scripts/README.md)
 - [Kafka 파이프라인 직접 실행기 가이드](src/scripts/README.md#-kafka-파이프라인-직접-실행기-상세-가이드)
-- [배포 및 운영 가이드](deployment/README_COMPLETE.md)
+- [배포 및 운영 가이드](src/deployment/README_COMPLETE.md)
 
 ---
 
